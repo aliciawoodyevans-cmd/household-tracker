@@ -21,25 +21,30 @@ document.querySelectorAll(".nav-btn").forEach(button => {
 });
 
 function callApi(action, params = {}) {
-  return new Promise((resolve, reject) => {
-    const callbackName = "houseflow_" + Math.random().toString(36).slice(2);
-    const query = new URLSearchParams({ action, callback: callbackName, ...params });
-
-    window[callbackName] = function(data) {
-      delete window[callbackName];
-      script.remove();
-      if (!data.ok) reject(data.error || "Unknown API error");
-      else resolve(data);
-    };
-
-    const script = document.createElement("script");
-    script.src = CONFIG.apiUrl + "?" + query.toString();
-    script.onerror = function() {
-      delete window[callbackName];
-      reject("Could not connect to HouseFlow API.");
-    };
-    document.body.appendChild(script);
+  const query = new URLSearchParams({
+    action,
+    callback: "houseflowCallback",
+    ...params
   });
+
+  return fetch(CONFIG.apiUrl + "?" + query.toString(), {
+    method: "GET",
+    redirect: "follow"
+  })
+    .then(response => response.text())
+    .then(text => {
+      const jsonText = text
+        .replace(/^houseflowCallback\(/, "")
+        .replace(/\);?$/, "");
+
+      const data = JSON.parse(jsonText);
+
+      if (!data.ok) {
+        throw new Error(data.error || "Unknown API error");
+      }
+
+      return data;
+    });
 }
 
 function loadData() {
