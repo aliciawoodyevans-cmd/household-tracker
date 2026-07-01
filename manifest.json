@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HouseFlow</title>
+  <link rel="stylesheet" href="styles.css?v=040p" />
+  <link rel="manifest" href="manifest.json" />
+</head>
+<body>
+  <div class="app">
+    <header class="top-bar">
+      <div>
+        <p class="eyebrow">HouseFlow</p>
+        <h1 id="page-title">Today</h1>
+      </div>
+    </header>
+    <main id="app-content"></main>
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-tab="today">Today</button>
+      <button class="nav-btn" data-tab="quick">Quick Picks</button>
+      <button class="nav-btn" data-tab="health">Home Health</button>
+      <button class="nav-btn" data-tab="projects">Projects</button>
+    </nav>
+  </div>
+  <script src="api/config.js?v=040p"></script>
+  <script src="app.js?v=040p"></script>
+</body>
+</html>

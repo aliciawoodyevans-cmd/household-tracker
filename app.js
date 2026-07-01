@@ -3,46 +3,90 @@ let state = {
   data: null,
   selectedQuickPick: null,
   selectedZone: null,
+  selectedProject: null,
   showWork: false,
   oneThingMode: false,
   loading: true,
   error: "",
-  localCompleted: []
+  localCompleted: [],
+  isAuthenticated: false
 };
+
+const AUTH_KEY = "houseflow_authenticated_v1";
 
 document.querySelectorAll(".nav-btn").forEach(button => {
   button.addEventListener("click", () => {
+    if (!state.isAuthenticated) return;
     state.tab = button.dataset.tab;
     state.selectedQuickPick = null;
     state.selectedZone = null;
+    state.selectedProject = null;
     state.oneThingMode = false;
     render();
   });
 });
 
-function callApi(action, params = {}) {
-  const query = new URLSearchParams({
-    action,
-    callback: "houseflowCallback",
-    ...params
-  });
+function initApp() {
+  state.isAuthenticated = localStorage.getItem(AUTH_KEY) === "true";
+  if (!state.isAuthenticated) {
+    renderLogin();
+    return;
+  }
+  loadData();
+}
 
-  return fetch(CONFIG.apiUrl + "?" + query.toString(), {
-    method: "GET",
-    redirect: "follow"
-  })
+function renderLogin(message = "") {
+  document.getElementById("page-title").textContent = "Sign In";
+  document.querySelectorAll(".nav-btn").forEach(button => button.classList.remove("active"));
+  document.getElementById("app-content").innerHTML = `
+    <div class="login-card">
+      <div class="login-title">Welcome to HouseFlow</div>
+      <div class="login-subtitle">Enter your HouseFlow password to continue on this device.</div>
+      <input id="password-input" class="password-input" type="password" placeholder="Password" autocomplete="current-password" />
+      <button class="complete-btn" onclick="attemptLogin()">Sign In</button>
+      ${message ? `<div class="login-error">${message}</div>` : ""}
+    </div>
+  `;
+  const input = document.getElementById("password-input");
+  if (input) {
+    input.focus();
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") attemptLogin();
+    });
+  }
+}
+
+function attemptLogin() {
+  const input = document.getElementById("password-input");
+  const value = input ? input.value : "";
+  if (!CONFIG.appPassword || CONFIG.appPassword === "CHANGE_THIS_PASSWORD") {
+    renderLogin("Set your app password in api/config.js first.");
+    return;
+  }
+  if (value === CONFIG.appPassword) {
+    localStorage.setItem(AUTH_KEY, "true");
+    state.isAuthenticated = true;
+    loadData();
+    return;
+  }
+  renderLogin("Incorrect password.");
+}
+
+function signOut() {
+  localStorage.removeItem(AUTH_KEY);
+  state.isAuthenticated = false;
+  state.data = null;
+  renderLogin();
+}
+
+function callApi(action, params = {}) {
+  const query = new URLSearchParams({ action, callback: "houseflowCallback", ...params });
+  return fetch(CONFIG.apiUrl + "?" + query.toString(), { method: "GET", redirect: "follow" })
     .then(response => response.text())
     .then(text => {
-      const jsonText = text
-        .replace(/^houseflowCallback\(/, "")
-        .replace(/\);?$/, "");
-
+      const jsonText = text.replace(/^houseflowCallback\(/, "").replace(/\);?$/, "");
       const data = JSON.parse(jsonText);
-
-      if (!data.ok) {
-        throw new Error(data.error || "Unknown API error");
-      }
-
+      if (!data.ok) throw new Error(data.error || "Unknown API error");
       return data;
     });
 }
@@ -50,10 +94,9 @@ function callApi(action, params = {}) {
 function loadData() {
   state.loading = true;
   renderLoading();
-
   callApi("getData")
     .then(data => {
-      state.data = data;
+      state.data = addGainPercentages(data);
       state.loading = false;
       render();
     })
@@ -64,30 +107,51 @@ function loadData() {
     });
 }
 
+function addGainPercentages(data) {
+  const allTasks = [...(data.today || []), ...(data.week || [])];
+  const totalScore = allTasks.reduce((sum, task) => sum + Number(task.score || 0), 0);
+  const missingHealth = Math.max(0, 100 - Number(data.health?.overall || 100));
+  const addGain = task => {
+    const score = Number(task.score || 0);
+    let gainPercent = 0;
+    if (totalScore > 0 && missingHealth > 0) {
+      gainPercent = Math.max(1, Math.round((score / totalScore) * missingHealth));
+    }
+    return { ...task, gainPercent };
+  };
+  return {
+    ...data,
+    today: (data.today || []).map(addGain),
+    week: (data.week || []).map(addGain),
+    quick: (data.quick || []).map(group => ({ ...group, tasks: (group.tasks || []).map(addGain) })),
+    projects: data.projects || []
+  };
+}
+
 function render() {
+  if (!state.isAuthenticated) return renderLogin();
   if (state.loading) return renderLoading();
   if (state.error) return renderError(state.error);
-
   document.querySelectorAll(".nav-btn").forEach(button => {
     button.classList.toggle("active", button.dataset.tab === state.tab);
   });
-
   const title = document.getElementById("page-title");
   const content = document.getElementById("app-content");
-
   if (state.tab === "today") {
     title.textContent = "Today";
     content.innerHTML = renderToday();
   }
-
   if (state.tab === "quick") {
     title.textContent = "Quick Picks";
     content.innerHTML = renderQuickPicks();
   }
-
   if (state.tab === "health") {
     title.textContent = "Home Health";
     content.innerHTML = renderHomeHealth();
+  }
+  if (state.tab === "projects") {
+    title.textContent = "Projects";
+    content.innerHTML = renderProjects();
   }
 }
 
@@ -105,23 +169,18 @@ function renderToday() {
   const completed = [...state.localCompleted, ...(state.data.completedToday || [])];
   const currentMinutes = today.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
   const health = state.data.health?.overall ?? 100;
-
   let html = `
     <div class="health-card">
       <div>Home Health</div>
       <div class="health-percent">${health}%</div>
       <div class="health-detail">${today.length} current tasks • ${currentMinutes} minutes</div>
-      ${
-        state.oneThingMode
-          ? ""
-          : `
-            <button class="complete-btn" onclick="startWorking()">Start Working</button>
-            <button class="complete-btn" onclick="doOneThing()">Do One Thing</button>
-          `
-      }
+      ${state.oneThingMode ? "" : `
+        <button class="complete-btn" onclick="startWorking()">View All Tasks</button>
+        <button class="complete-btn" onclick="doOneThing()">Do One Thing</button>
+      `}
+      <button class="sign-out-btn" onclick="signOut()">Sign Out</button>
     </div>
   `;
-
   if (state.oneThingMode) {
     html += renderOneThing(today, week);
   } else if (state.showWork) {
@@ -133,35 +192,26 @@ function renderToday() {
         ${summaryItem("This Week", week.length)}
       </div>
     `;
-
-    if (today.length === 0) {
-      html += `<div class="empty">No current tasks. 🎉</div>`;
-    } else {
+    if (today.length === 0) html += `<div class="empty">No current tasks. 🎉</div>`;
+    else {
       html += `<div class="section-title">Current Work</div>`;
       today.forEach(task => html += taskCard(task));
     }
-
     if (week.length > 0) {
       html += `<div class="section-title">Coming Up This Week</div>`;
       week.slice(0, 8).forEach(task => html += taskCard(task));
     }
   }
-
   if (completed.length > 0) {
     html += `<div class="section-title">Completed Today</div>`;
     completed.forEach(task => html += completedCard(task));
   }
-
   return html;
 }
 
 function renderOneThing(today, week) {
   const task = getBestTask(today, week);
-
-  if (!task) {
-    return `<div class="empty">No task to recommend right now. 🎉</div>`;
-  }
-
+  if (!task) return `<div class="empty">No task to recommend right now. 🎉</div>`;
   return `
     <div class="section-title">Do One Thing</div>
     ${taskCard(task)}
@@ -172,50 +222,36 @@ function renderOneThing(today, week) {
 function getBestTask(today, week) {
   const all = [...today, ...week];
   if (all.length === 0) return null;
-
-  return all
-    .slice()
-    .sort((a, b) => {
-      const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
-      if (scoreDiff !== 0) return scoreDiff;
-      return Number(a.minutes || 999) - Number(b.minutes || 999);
-    })[0];
+  return all.slice().sort((a, b) => {
+    const gainDiff = Number(b.gainPercent || 0) - Number(a.gainPercent || 0);
+    if (gainDiff !== 0) return gainDiff;
+    const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return Number(a.minutes || 999) - Number(b.minutes || 999);
+  })[0];
 }
 
 function renderQuickPicks() {
   const groups = state.data.quick || [];
-  if (groups.length === 0) return `<div class="empty">No quick picks right now.</div>`;
-
+  const filteredGroups = groups.filter(group => group.name !== "Surprise me");
+  if (filteredGroups.length === 0) return `<div class="empty">No quick picks right now.</div>`;
   let html = `<div class="quick-grid">`;
-
-  groups.forEach(group => {
-    html += `
-      <div class="quick-card">
-        <button class="quick-btn" onclick="selectQuickPick('${escapeQuotes(group.name)}')">${group.name}</button>
-      </div>
-    `;
+  filteredGroups.forEach(group => {
+    html += `<div class="quick-card"><button class="quick-btn" onclick="selectQuickPick('${escapeQuotes(group.name)}')">${group.name}</button></div>`;
   });
-
   html += `</div>`;
-
   if (state.selectedQuickPick) {
-    const group = groups.find(g => g.name === state.selectedQuickPick);
+    const group = filteredGroups.find(g => g.name === state.selectedQuickPick);
     html += `<div class="section-title">${state.selectedQuickPick}</div>`;
-
-    if (!group || group.tasks.length === 0) {
-      html += `<div class="empty">No tasks found.</div>`;
-    } else {
-      group.tasks.forEach(task => html += taskCard(task));
-    }
+    if (!group || group.tasks.length === 0) html += `<div class="empty">No tasks found.</div>`;
+    else group.tasks.forEach(task => html += taskCard(task));
   }
-
   return html;
 }
 
 function renderHomeHealth() {
   const health = state.data.health;
   if (!health) return `<div class="empty">No health data available.</div>`;
-
   let html = `
     <div class="health-card">
       <div>Overall</div>
@@ -223,27 +259,92 @@ function renderHomeHealth() {
       <div class="health-bar-wrap"><div class="health-bar" style="width:${health.overall}%"></div></div>
     </div>
   `;
-
   health.zones.forEach(zone => {
+    const isSelected = state.selectedZone === zone.zone;
+    const zoneTasks = getZoneTasks(zone.zone);
+    const bestTask = getBestTask(zoneTasks, []);
+    const otherTasks = bestTask ? zoneTasks.filter(task => task.row !== bestTask.row) : zoneTasks;
     html += `
-      <div class="health-card" onclick="selectZone('${escapeQuotes(zone.zone)}')">
-        <strong>${zone.zone}</strong>
+      <div class="health-card ${isSelected ? "selected-zone" : ""}" onclick="selectZone('${escapeQuotes(zone.zone)}')">
+        <strong>${isSelected ? "▼" : "▶"} ${zone.zone}</strong>
         <div class="health-percent">${zone.percent}%</div>
         <div class="health-bar-wrap"><div class="health-bar" style="width:${zone.percent}%"></div></div>
         <div class="health-detail">${zone.dueCount} tasks due</div>
+        <div class="zone-task-list ${isSelected ? "expanded" : ""}">
+          ${isSelected ? renderExpandedZone(bestTask, otherTasks) : ""}
+        </div>
       </div>
     `;
   });
-
-  if (state.selectedZone) html += renderZoneTasks(state.selectedZone);
   return html;
 }
 
-function renderZoneTasks(zoneName) {
-  const tasks = [...(state.data.today || []), ...(state.data.week || [])].filter(task => task.zone === zoneName);
-  let html = `<div class="section-title">${zoneName} Tasks</div>`;
-  html += tasks.length ? tasks.map(taskCard).join("") : `<div class="empty">No tasks due here.</div>`;
+function renderExpandedZone(bestTask, otherTasks) {
+  if (!bestTask && otherTasks.length === 0) return `<div class="empty">No tasks due here.</div>`;
+  let html = "";
+  if (bestTask) {
+    html += `<div class="biggest-card"><div class="biggest-label">⭐ Biggest Improvement</div>${taskCard(bestTask)}</div>`;
+  }
+  if (otherTasks.length > 0) {
+    html += `<div class="subsection-title">While You're Here</div><div class="while-here-list">`;
+    otherTasks.forEach(task => html += taskCard(task));
+    html += `</div>`;
+  }
   return html;
+}
+
+function renderProjects() {
+  const projects = state.data.projects || [];
+  if (projects.length === 0) return `<div class="empty">No projects yet.</div>`;
+  let html = "";
+  const activeProjects = projects.filter(project => project.status !== "Completed");
+  const completedProjects = projects.filter(project => project.status === "Completed");
+  if (activeProjects.length > 0) {
+    html += `<div class="section-title">Active Projects</div>`;
+    activeProjects.forEach(project => html += projectCard(project));
+  }
+  if (completedProjects.length > 0) {
+    html += `<div class="section-title">Completed Projects</div>`;
+    completedProjects.forEach(project => html += projectCard(project));
+  }
+  return html;
+}
+
+function projectCard(project) {
+  const isSelected = state.selectedProject === project.row;
+  const statusClass = getStatusClass(project.status);
+  return `
+    <div class="project-card ${isSelected ? "selected-project" : ""}" onclick="selectProject(${project.row})">
+      <div class="project-title">${isSelected ? "▼" : "▶"} ${project.project}</div>
+      <div class="project-meta">${project.area || "No area listed"}</div>
+      <div class="project-status ${statusClass}">${project.status || "Not Started"}</div>
+      ${isSelected ? `
+        <div class="project-detail-list">
+          ${project.hours ? `<div class="project-row"><strong>Hours</strong> ${project.hours}</div>` : ""}
+          ${project.cost ? `<div class="project-row"><strong>Cost</strong> ${formatCost(project.cost)}</div>` : ""}
+          ${project.notes ? `<div class="project-notes">${project.notes}</div>` : ""}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function getStatusClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "in progress") return "in-progress";
+  if (value === "on hold") return "on-hold";
+  if (value === "completed") return "completed";
+  return "";
+}
+
+function formatCost(value) {
+  const num = Number(value);
+  if (isNaN(num)) return value;
+  return "$" + num.toLocaleString("en-US");
+}
+
+function getZoneTasks(zoneName) {
+  return [...(state.data.today || []), ...(state.data.week || [])].filter(task => task.zone === zoneName);
 }
 
 function taskCard(task) {
@@ -252,9 +353,16 @@ function taskCard(task) {
       <div class="task-title">${task.task}</div>
       <div class="task-meta">${task.zone} • ${task.area} • ${task.minutes} min • Due ${formatDisplayDate(task.due)}</div>
       <div class="task-notes">${task.notes || ""}</div>
-      <button class="complete-btn" onclick="completeTask(${task.row})">Complete</button>
+      <div class="task-gain">🏡 ${formatGain(task.gainPercent)} Home Health</div>
+      <button class="complete-btn" onclick="event.stopPropagation(); completeTask(${task.row})">Complete</button>
     </div>
   `;
+}
+
+function formatGain(gainPercent) {
+  const gain = Number(gainPercent || 0);
+  if (gain <= 0) return "+0%";
+  return `+${gain}%`;
 }
 
 function completedCard(task) {
@@ -270,10 +378,9 @@ function completedCard(task) {
 function completeTask(row) {
   const task = [...(state.data.today || []), ...(state.data.week || [])].find(t => t.row === row);
   renderLoading();
-
   callApi("complete", { row })
     .then(data => {
-      state.data = data;
+      state.data = addGainPercentages(data);
       if (task) state.localCompleted.unshift(task);
       state.showWork = true;
       render();
@@ -283,10 +390,9 @@ function completeTask(row) {
 
 function undoLast() {
   renderLoading();
-
   callApi("undo")
     .then(data => {
-      state.data = data;
+      state.data = addGainPercentages(data);
       state.localCompleted.shift();
       render();
     })
@@ -317,17 +423,17 @@ function selectQuickPick(name) {
 }
 
 function selectZone(zone) {
-  state.selectedZone = zone;
+  state.selectedZone = state.selectedZone === zone ? null : zone;
+  render();
+}
+
+function selectProject(row) {
+  state.selectedProject = state.selectedProject === row ? null : row;
   render();
 }
 
 function summaryItem(label, number) {
-  return `
-    <div class="summary-item">
-      <div class="summary-number">${number}</div>
-      <div class="summary-label">${label}</div>
-    </div>
-  `;
+  return `<div class="summary-item"><div class="summary-number">${number}</div><div class="summary-label">${label}</div></div>`;
 }
 
 function countByStatus(tasks, status) {
@@ -345,4 +451,4 @@ function escapeQuotes(text) {
   return String(text).replace(/'/g, "\\'");
 }
 
-loadData();
+initApp();
