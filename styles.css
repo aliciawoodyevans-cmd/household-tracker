@@ -12,6 +12,8 @@
   --selected-border: #2f80ed;
   --gain-bg: #eef8ef;
   --gain-text: #1f6f2a;
+  --success-bg: #eef8ef;
+  --success-border: #b9dfbf;
 }
 
 * { box-sizing: border-box; }
@@ -59,7 +61,8 @@ h1 {
 .completed-card,
 .biggest-card,
 .login-card,
-.project-card {
+.project-card,
+.guided-message {
   background: var(--card);
   border-radius: 18px;
   padding: 16px;
@@ -89,7 +92,7 @@ h1 {
 .summary-number { font-size: 28px; font-weight: bold; }
 .summary-label { color: var(--muted); font-size: 13px; }
 
-.task-card { border-left: 8px solid var(--today); }
+.task-card { border-left: 8px solid var(--today); animation: softIn 0.2s ease; }
 .task-card.critical { border-left-color: var(--critical); }
 .task-card.overdue { border-left-color: var(--overdue); }
 .task-card.today { border-left-color: var(--today); }
@@ -140,9 +143,38 @@ h1 {
   font-size: 16px;
 }
 
+.secondary-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: white;
+  color: #111;
+  font-size: 15px;
+}
+
 .completed-card {
   background: #fff8d6;
   border: 1px solid #e0c85a;
+}
+
+.guided-message {
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  box-shadow: none;
+}
+
+.guided-message-title {
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.guided-message-detail {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .section-title {
@@ -265,6 +297,11 @@ h1 {
 
 @keyframes expandZone {
   from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes softIn {
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 

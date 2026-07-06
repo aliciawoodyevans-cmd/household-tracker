@@ -6,6 +6,9 @@ let state = {
   selectedProject: null,
   showWork: false,
   oneThingMode: false,
+  guidedLastZone: null,
+  guidedLastArea: null,
+  guidedJustCompleted: null,
   loading: true,
   error: "",
   localCompleted: [],
@@ -22,6 +25,7 @@ document.querySelectorAll(".nav-btn").forEach(button => {
     state.selectedZone = null;
     state.selectedProject = null;
     state.oneThingMode = false;
+    state.guidedJustCompleted = null;
     render();
   });
 });
@@ -182,7 +186,7 @@ function renderToday() {
     </div>
   `;
   if (state.oneThingMode) {
-    html += renderOneThing(today, week);
+    html += renderGuidedMode(today, week);
   } else if (state.showWork) {
     html += `
       <div class="summary-card">
@@ -209,14 +213,66 @@ function renderToday() {
   return html;
 }
 
-function renderOneThing(today, week) {
-  const task = getBestTask(today, week);
-  if (!task) return `<div class="empty">No task to recommend right now. 🎉</div>`;
+function renderGuidedMode(today, week) {
+  const all = [...today, ...week];
+  const task = getGuidedTask(all);
+
+  if (!task) {
+    return `
+      <div class="guided-message">
+        <div class="guided-message-title">All caught up. 🎉</div>
+        <div class="guided-message-detail">There are no current tasks to recommend right now.</div>
+      </div>
+      <button class="secondary-btn" onclick="exitOneThingMode()">Exit Guided Mode</button>
+    `;
+  }
+
+  let html = `<div class="section-title">Do One Thing</div>`;
+
+  if (state.guidedJustCompleted) {
+    html += renderGuidedMessage(task);
+  }
+
+  html += taskCard(task);
+  html += `<button class="secondary-btn" onclick="exitOneThingMode()">Exit Guided Mode</button>`;
+
+  return html;
+}
+
+function renderGuidedMessage(nextTask) {
+  const completed = state.guidedJustCompleted;
+  let detail = "Here is the next best task.";
+
+  if (completed && nextTask.area && completed.area && nextTask.area === completed.area) {
+    detail = `Since you're already in ${nextTask.area}, here is another task nearby.`;
+  } else if (completed && nextTask.zone && completed.zone && nextTask.zone === completed.zone) {
+    detail = `Since you're already in ${nextTask.zone}, here is another task in the same zone.`;
+  } else if (nextTask.area || nextTask.zone) {
+    detail = `Next stop: ${nextTask.area || nextTask.zone}.`;
+  }
+
   return `
-    <div class="section-title">Do One Thing</div>
-    ${taskCard(task)}
-    <button class="undo-btn" onclick="exitOneThingMode()">Show Full List</button>
+    <div class="guided-message">
+      <div class="guided-message-title">Nice work!</div>
+      <div class="guided-message-detail">${detail}</div>
+    </div>
   `;
+}
+
+function getGuidedTask(tasks) {
+  if (!tasks || tasks.length === 0) return null;
+
+  if (state.guidedLastArea) {
+    const sameArea = tasks.filter(task => task.area === state.guidedLastArea);
+    if (sameArea.length > 0) return getBestTask(sameArea, []);
+  }
+
+  if (state.guidedLastZone) {
+    const sameZone = tasks.filter(task => task.zone === state.guidedLastZone);
+    if (sameZone.length > 0) return getBestTask(sameZone, []);
+  }
+
+  return getBestTask(tasks, []);
 }
 
 function getBestTask(today, week) {
@@ -354,7 +410,7 @@ function taskCard(task) {
       <div class="task-meta">${task.zone} • ${task.area} • ${task.minutes} min • Due ${formatDisplayDate(task.due)}</div>
       <div class="task-notes">${task.notes || ""}</div>
       <div class="task-gain">🏡 ${formatGain(task.gainPercent)} Home Health</div>
-      <button class="complete-btn" onclick="event.stopPropagation(); completeTask(${task.row})">Complete</button>
+      <button class="complete-btn" onclick="event.stopPropagation(); completeTask('${escapeQuotes(task.taskId)}')">Complete</button>
     </div>
   `;
 }
@@ -375,14 +431,23 @@ function completedCard(task) {
   `;
 }
 
-function completeTask(row) {
-  const task = [...(state.data.today || []), ...(state.data.week || [])].find(t => t.row === row);
+function completeTask(taskId) {
+  const task = [...(state.data.today || []), ...(state.data.week || [])].find(t => String(t.taskId) === String(taskId));
   renderLoading();
-  callApi("complete", { row })
+  callApi("complete", { taskId })
     .then(data => {
       state.data = addGainPercentages(data);
-      if (task) state.localCompleted.unshift(task);
-      state.showWork = true;
+      if (task) {
+        state.localCompleted.unshift(task);
+        if (state.oneThingMode) {
+          state.guidedLastZone = task.zone || null;
+          state.guidedLastArea = task.area || null;
+          state.guidedJustCompleted = task;
+          state.showWork = false;
+        } else {
+          state.showWork = true;
+        }
+      }
       render();
     })
     .catch(error => renderError(error));
@@ -394,6 +459,7 @@ function undoLast() {
     .then(data => {
       state.data = addGainPercentages(data);
       state.localCompleted.shift();
+      state.guidedJustCompleted = null;
       render();
     })
     .catch(error => renderError(error));
@@ -402,18 +468,23 @@ function undoLast() {
 function startWorking() {
   state.showWork = true;
   state.oneThingMode = false;
+  state.guidedJustCompleted = null;
   render();
 }
 
 function doOneThing() {
   state.showWork = false;
   state.oneThingMode = true;
+  state.guidedLastZone = null;
+  state.guidedLastArea = null;
+  state.guidedJustCompleted = null;
   render();
 }
 
 function exitOneThingMode() {
   state.oneThingMode = false;
   state.showWork = true;
+  state.guidedJustCompleted = null;
   render();
 }
 
