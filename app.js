@@ -167,8 +167,50 @@ function renderError(message) {
   document.getElementById("app-content").innerHTML = `<div class="empty">Error: ${message}</div>`;
 }
 
+
+function sortCurrentWork(tasks) {
+  const statusOrder = {
+    critical: 1,
+    overdue: 2,
+    today: 3,
+    week: 4
+  };
+
+  return tasks.slice().sort((a, b) => {
+    const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+    if (statusDiff !== 0) return statusDiff;
+
+    const dateDiff = getSortableDate(a.due) - getSortableDate(b.due);
+    if (dateDiff !== 0) return dateDiff;
+
+    return Number(b.score || 0) - Number(a.score || 0);
+  });
+}
+
+function getSortableDate(value) {
+  if (!value) return new Date(2999, 11, 31).getTime();
+
+  const text = String(value).trim();
+  const parts = text.split("/");
+
+  if (parts.length === 3) {
+    const month = Number(parts[0]) - 1;
+    const day = Number(parts[1]);
+    const year = Number(parts[2]);
+
+    if (!isNaN(month) && !isNaN(day) && !isNaN(year)) {
+      return new Date(year, month, day).getTime();
+    }
+  }
+
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return new Date(2999, 11, 31).getTime();
+
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
 function renderToday() {
-  const today = state.data.today || [];
+  const today = sortCurrentWork(state.data.today || []);
   const week = state.data.week || [];
   const completed = [...state.localCompleted, ...(state.data.completedToday || [])];
   const currentMinutes = today.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
