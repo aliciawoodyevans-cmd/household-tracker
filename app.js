@@ -168,18 +168,8 @@ function renderError(message) {
 }
 
 
-function sortCurrentWork(tasks) {
-  const statusOrder = {
-    critical: 1,
-    overdue: 2,
-    today: 3,
-    week: 4
-  };
-
+function sortByDueDate(tasks) {
   return tasks.slice().sort((a, b) => {
-    const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
-    if (statusDiff !== 0) return statusDiff;
-
     const dateDiff = getSortableDate(a.due) - getSortableDate(b.due);
     if (dateDiff !== 0) return dateDiff;
 
@@ -209,17 +199,35 @@ function getSortableDate(value) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
+function renderCurrentWorkGroup(title, tasks) {
+  if (tasks.length === 0) return "";
+
+  let html = `<div class="section-title">${title} (${tasks.length})</div>`;
+  sortByDueDate(tasks).forEach(task => html += taskCard(task));
+  return html;
+}
+
 function renderToday() {
-  const today = sortCurrentWork(state.data.today || []);
-  const week = state.data.week || [];
+  const currentWork = state.data.today || [];
+  const criticalTasks = currentWork.filter(task => task.status === "critical");
+  const overdueTasks = currentWork.filter(task => task.status === "overdue");
+  const todayTasks = currentWork.filter(task => task.status === "today");
+  const today = [
+    ...sortByDueDate(criticalTasks),
+    ...sortByDueDate(overdueTasks),
+    ...sortByDueDate(todayTasks)
+  ];
+
+  const week = sortByDueDate(state.data.week || []);
   const completed = [...state.localCompleted, ...(state.data.completedToday || [])];
-  const currentMinutes = today.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
+  const currentMinutes = currentWork.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
   const health = state.data.health?.overall ?? 100;
+
   let html = `
     <div class="health-card">
       <div>Home Health</div>
       <div class="health-percent">${health}%</div>
-      <div class="health-detail">${today.length} current tasks • ${currentMinutes} minutes</div>
+      <div class="health-detail">${currentWork.length} current tasks • ${currentMinutes} minutes</div>
       ${state.oneThingMode ? "" : `
         <button class="complete-btn" onclick="startWorking()">View All Tasks</button>
         <button class="complete-btn" onclick="doOneThing()">Do One Thing</button>
@@ -227,34 +235,40 @@ function renderToday() {
       <button class="sign-out-btn" onclick="signOut()">Sign Out</button>
     </div>
   `;
+
   if (state.oneThingMode) {
     html += renderGuidedMode(today, week);
   } else if (state.showWork) {
     html += `
       <div class="summary-card">
-        ${summaryItem("Critical", countByStatus([...today, ...week], "critical"))}
-        ${summaryItem("Overdue", countByStatus([...today, ...week], "overdue"))}
-        ${summaryItem("Due Today", countByStatus([...today, ...week], "today"))}
+        ${summaryItem("Critical", criticalTasks.length)}
+        ${summaryItem("Overdue", overdueTasks.length)}
+        ${summaryItem("Due Today", todayTasks.length)}
         ${summaryItem("This Week", week.length)}
       </div>
     `;
-    if (today.length === 0) html += `<div class="empty">No current tasks. 🎉</div>`;
-    else {
-      html += `<div class="section-title">Current Work</div>`;
-      today.forEach(task => html += taskCard(task));
+
+    if (currentWork.length === 0) {
+      html += `<div class="empty">No current tasks. 🎉</div>`;
+    } else {
+      html += renderCurrentWorkGroup("Critical", criticalTasks);
+      html += renderCurrentWorkGroup("Overdue", overdueTasks);
+      html += renderCurrentWorkGroup("Due Today", todayTasks);
     }
+
     if (week.length > 0) {
       html += `<div class="section-title">Coming Up This Week</div>`;
       week.slice(0, 8).forEach(task => html += taskCard(task));
     }
   }
+
   if (completed.length > 0) {
     html += `<div class="section-title">Completed Today</div>`;
     completed.forEach(task => html += completedCard(task));
   }
+
   return html;
 }
-
 function renderGuidedMode(today, week) {
   const all = [...today, ...week];
   const task = getGuidedTask(all);
