@@ -157,6 +157,11 @@ function render() {
     title.textContent = "Projects";
     content.innerHTML = renderProjects();
   }
+
+  if (state.tab === "diagnostics") {
+    title.textContent = "Diagnostics";
+    content.innerHTML = renderDiagnostics();
+  }
 }
 
 function renderLoading() {
@@ -403,6 +408,104 @@ function renderExpandedZone(bestTask, otherTasks) {
     html += `</div>`;
   }
   return html;
+}
+
+
+function renderDiagnostics() {
+  const d = state.data.diagnostics;
+
+  if (!d) {
+    return `<div class="empty">No diagnostics data available.</div>`;
+  }
+
+  let html = `
+    <div class="diagnostic-card">
+      <div class="diagnostic-title">System Status</div>
+      ${diagnosticRow("App Version", d.appVersion || "Unknown", "ok")}
+      ${diagnosticRow("API Connected", "Yes", "ok")}
+      ${diagnosticRow("Last Sync", d.lastSync || "", "ok")}
+      ${diagnosticRow("Tasks Loaded", d.taskCounts?.totalTasks ?? 0, "ok")}
+      ${diagnosticRow("Projects Loaded", d.projectCounts?.totalProjects ?? 0, "ok")}
+      ${diagnosticRow("History Records", d.historyCounts?.totalRecords ?? 0, "ok")}
+    </div>
+
+    <div class="diagnostic-card">
+      <div class="diagnostic-title">Current Work</div>
+      ${diagnosticRow("Critical", d.taskCounts?.critical ?? 0, statusForCount(d.taskCounts?.critical))}
+      ${diagnosticRow("Overdue", d.taskCounts?.overdue ?? 0, statusForCount(d.taskCounts?.overdue))}
+      ${diagnosticRow("Due Today", d.taskCounts?.today ?? 0, "ok")}
+      ${diagnosticRow("This Week", d.taskCounts?.week ?? 0, "ok")}
+    </div>
+
+    <div class="diagnostic-card">
+      <div class="diagnostic-title">Task Data Health</div>
+      ${diagnosticRow("Blank Task IDs", d.taskIssues?.blankTaskIds ?? 0, statusForCount(d.taskIssues?.blankTaskIds))}
+      ${diagnosticRow("Duplicate Task IDs", d.taskIssues?.duplicateTaskIds ?? 0, statusForCount(d.taskIssues?.duplicateTaskIds))}
+      ${diagnosticRow("Blank Task Names", d.taskIssues?.blankTaskNames ?? 0, statusForCount(d.taskIssues?.blankTaskNames))}
+      ${diagnosticRow("Missing Due Dates", d.taskIssues?.missingDueDates ?? 0, statusForCount(d.taskIssues?.missingDueDates))}
+      ${diagnosticRow("Invalid Preferred Months", d.taskIssues?.invalidPreferredMonths ?? 0, statusForCount(d.taskIssues?.invalidPreferredMonths))}
+      ${diagnosticRow("Missing Estimated Minutes", d.taskIssues?.missingEstimatedMinutes ?? 0, statusForCount(d.taskIssues?.missingEstimatedMinutes))}
+      ${diagnosticRow("Negative or Blank Intervals", d.taskIssues?.badIntervals ?? 0, statusForCount(d.taskIssues?.badIntervals))}
+      ${diagnosticRow("Unknown Task Types", d.taskIssues?.unknownTaskTypes ?? 0, statusForCount(d.taskIssues?.unknownTaskTypes))}
+    </div>
+
+    <div class="diagnostic-card">
+      <div class="diagnostic-title">History Health</div>
+      ${diagnosticRow("Completed Today", d.historyCounts?.completedToday ?? 0, "ok")}
+      ${diagnosticRow("History IDs Missing from Task Master", d.historyIssues?.orphanedTaskIds ?? 0, statusForCount(d.historyIssues?.orphanedTaskIds))}
+    </div>
+
+    <div class="diagnostic-card">
+      <div class="diagnostic-title">Projects</div>
+      ${diagnosticRow("Active", d.projectCounts?.active ?? 0, "ok")}
+      ${diagnosticRow("On Hold", d.projectCounts?.onHold ?? 0, "ok")}
+      ${diagnosticRow("Completed", d.projectCounts?.completed ?? 0, "ok")}
+      ${diagnosticRow("Missing Status", d.projectIssues?.missingStatus ?? 0, statusForCount(d.projectIssues?.missingStatus))}
+    </div>
+  `;
+
+  const warnings = collectDiagnosticWarnings(d);
+
+  if (warnings.length > 0) {
+    html += `
+      <div class="diagnostic-card">
+        <div class="diagnostic-title">Warnings</div>
+        ${warnings.map(warning => `<div class="diagnostic-warning">${warning}</div>`).join("")}
+      </div>
+    `;
+  }
+
+  return html;
+}
+
+function diagnosticRow(label, value, status = "ok") {
+  const statusClass = status === "warn" ? "warn" : "ok";
+  const symbol = status === "warn" ? "⚠" : "✓";
+
+  return `
+    <div class="diagnostic-row">
+      <span>${label}</span>
+      <strong class="${statusClass}">${value} ${symbol}</strong>
+    </div>
+  `;
+}
+
+function statusForCount(value) {
+  return Number(value || 0) > 0 ? "warn" : "ok";
+}
+
+function collectDiagnosticWarnings(d) {
+  const warnings = [];
+
+  if ((d.taskIssues?.duplicateTaskIds || 0) > 0) warnings.push("Duplicate Task IDs can cause completions to attach to the wrong task.");
+  if ((d.taskIssues?.missingDueDates || 0) > 0) warnings.push("Some tasks are missing Next Due dates.");
+  if ((d.taskIssues?.invalidPreferredMonths || 0) > 0) warnings.push("Some Preferred Months values are not valid.");
+  if ((d.historyIssues?.orphanedTaskIds || 0) > 0) warnings.push("Some History records refer to Task IDs that are no longer in Task Master.");
+  if ((d.projectIssues?.missingStatus || 0) > 0) warnings.push("Some projects are missing a status.");
+
+  if (warnings.length === 0) warnings.push("No warnings found.");
+
+  return warnings;
 }
 
 function renderProjects() {
