@@ -250,6 +250,7 @@ function renderToday() {
       `}
       <button class="sign-out-btn" onclick="signOut()">Sign Out</button>
     </div>
+    ${renderWeeklyMomentumCard()}
   `;
 
   if (state.oneThingMode) {
@@ -285,6 +286,34 @@ function renderToday() {
 
   return html;
 }
+
+function renderWeeklyMomentumCard() {
+  const momentum = state.data.weeklyMomentum;
+  if (!momentum) return "";
+
+  const percent = Number(momentum.percent ?? 0);
+  const completed = Number(momentum.completedThisWeek || 0);
+  const total = Number(momentum.totalWorkload || 0);
+  const current = Number(momentum.remainingCurrent || 0);
+  const upcoming = Number(momentum.remainingUpcoming || 0);
+
+  return `
+    <div class="momentum-card">
+      <div class="momentum-header">
+        <div>
+          <div class="momentum-label">Weekly Momentum</div>
+          <div class="momentum-detail">${completed} of ${total} tasks cleared this week</div>
+        </div>
+        <div class="momentum-percent">${percent}%</div>
+      </div>
+      <div class="momentum-bar-wrap">
+        <div class="momentum-bar" style="width:${Math.min(100, Math.max(0, percent))}%"></div>
+      </div>
+      <div class="momentum-breakdown">${current} current • ${upcoming} upcoming</div>
+    </div>
+  `;
+}
+
 function renderGuidedMode(today, week) {
   const all = [...today, ...week];
   const task = getGuidedTask(all);
@@ -446,6 +475,15 @@ function renderDiagnostics() {
       ${diagnosticRow("Overdue", d.taskCounts?.overdue ?? 0, statusForCount(d.taskCounts?.overdue))}
       ${diagnosticRow("Due Today", d.taskCounts?.today ?? 0, "ok")}
       ${diagnosticRow("This Week", d.taskCounts?.week ?? 0, "ok")}
+    </div>
+
+    <div class="diagnostic-card">
+      <div class="diagnostic-title">Weekly Momentum</div>
+      ${diagnosticRow("Momentum", `${d.weeklyMomentum?.percent ?? 0}%`, "ok")}
+      ${diagnosticRow("Completed This Week", d.weeklyMomentum?.completedThisWeek ?? 0, "ok")}
+      ${diagnosticRow("Remaining Current", d.weeklyMomentum?.remainingCurrent ?? 0, "ok")}
+      ${diagnosticRow("Remaining Upcoming", d.weeklyMomentum?.remainingUpcoming ?? 0, "ok")}
+      ${diagnosticRow("Weekly Workload", d.weeklyMomentum?.totalWorkload ?? 0, "ok")}
     </div>
 
     <div class="diagnostic-card">
