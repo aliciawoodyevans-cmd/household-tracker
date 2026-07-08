@@ -12,6 +12,8 @@ let state = {
   loading: true,
   error: "",
   localCompleted: [],
+  pendingCompletionTask: null,
+  completionError: "",
   isAuthenticated: false
 };
 
@@ -136,32 +138,41 @@ function render() {
   if (!state.isAuthenticated) return renderLogin();
   if (state.loading) return renderLoading();
   if (state.error) return renderError(state.error);
+
   document.querySelectorAll(".nav-btn").forEach(button => {
     button.classList.toggle("active", button.dataset.tab === state.tab);
   });
+
   const title = document.getElementById("page-title");
   const content = document.getElementById("app-content");
+  let html = "";
+
   if (state.tab === "today") {
     title.textContent = "Today";
-    content.innerHTML = renderToday();
+    html = renderToday();
   }
+
   if (state.tab === "quick") {
     title.textContent = "Quick Picks";
-    content.innerHTML = renderQuickPicks();
+    html = renderQuickPicks();
   }
+
   if (state.tab === "health") {
     title.textContent = "Home Health";
-    content.innerHTML = renderHomeHealth();
+    html = renderHomeHealth();
   }
+
   if (state.tab === "projects") {
     title.textContent = "Projects";
-    content.innerHTML = renderProjects();
+    html = renderProjects();
   }
 
   if (state.tab === "diagnostics") {
     title.textContent = "Diagnostics";
-    content.innerHTML = renderDiagnostics();
+    html = renderDiagnostics();
   }
+
+  content.innerHTML = html + renderCompletionModal();
 }
 
 function renderLoading() {
@@ -224,7 +235,7 @@ function renderToday() {
   ];
 
   const week = sortByDueDate(state.data.week || []);
-  const completed = [...state.localCompleted, ...(state.data.completedToday || [])];
+  const completed = state.data.completedToday || [];
   const currentMinutes = currentWork.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
   const health = state.data.health?.overall ?? 100;
 
@@ -452,6 +463,9 @@ function renderDiagnostics() {
     <div class="diagnostic-card">
       <div class="diagnostic-title">History Health</div>
       ${diagnosticRow("Completed Today", d.historyCounts?.completedToday ?? 0, "ok")}
+      ${diagnosticRow("Actual Time Entries", d.historyCounts?.actualTimeEntries ?? 0, "ok")}
+      ${diagnosticRow("Actual Time Entries Today", d.historyCounts?.actualTimeEntriesToday ?? 0, "ok")}
+      ${diagnosticRow("Average Actual Minutes", formatDiagnosticMinutes(d.historyCounts?.averageActualMinutes), "ok")}
       ${diagnosticRow("History IDs Missing from Task Master", d.historyIssues?.orphanedTaskIds ?? 0, statusForCount(d.historyIssues?.orphanedTaskIds))}
     </div>
 
@@ -492,6 +506,12 @@ function diagnosticRow(label, value, status = "ok") {
 
 function statusForCount(value) {
   return Number(value || 0) > 0 ? "warn" : "ok";
+}
+
+function formatDiagnosticMinutes(value) {
+  const num = Number(value || 0);
+  if (!num) return "None yet";
+  return `${Math.round(num)} min`;
 }
 
 function collectDiagnosticWarnings(d) {
@@ -569,7 +589,7 @@ function taskCard(task) {
       <div class="task-meta">${task.zone} • ${task.area} • ${task.minutes} min • Due ${formatDisplayDate(task.due)}</div>
       <div class="task-notes">${task.notes || ""}</div>
       <div class="task-gain">🏡 ${formatGain(task.gainPercent)} Home Health</div>
-      <button class="complete-btn" onclick="event.stopPropagation(); completeTask('${escapeQuotes(task.taskId)}')">Complete</button>
+      <button class="complete-btn" onclick="event.stopPropagation(); openCompletionPrompt('${escapeQuotes(task.taskId)}')">Complete</button>
     </div>
   `;
 }
@@ -585,19 +605,88 @@ function completedCard(task) {
     <div class="completed-card">
       <strong>${task.task}</strong>
       <div class="task-meta">${task.zone || ""}${task.area ? " • " + task.area : ""}</div>
-      <button class="undo-btn" onclick="undoLast()">Undo Last Completion</button>
+      <button class="undo-btn" onclick="undoCompletion(${task.historyRow})">Undo Completion</button>
     </div>
   `;
 }
 
-function completeTask(taskId) {
+function renderCompletionModal() {
+  const task = state.pendingCompletionTask;
+  if (!task) return "";
+
+  return `
+    <div class="modal-overlay" onclick="closeCompletionPrompt()">
+      <div class="completion-modal" onclick="event.stopPropagation()">
+        <div class="modal-eyebrow">Complete Task</div>
+        <div class="modal-title">${task.task || "Task"}</div>
+        <div class="modal-question">How many minutes did this take?</div>
+        <input id="actual-minutes-input" class="minutes-input" type="number" min="1" max="240" step="1" inputmode="numeric" placeholder="Optional" />
+        ${state.completionError ? `<div class="modal-error">${state.completionError}</div>` : ""}
+        <div class="modal-actions">
+          <button class="secondary-btn modal-btn" onclick="skipCompletionMinutes()">Skip</button>
+          <button class="complete-btn modal-btn" onclick="saveCompletionMinutes()">Save</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function openCompletionPrompt(taskId) {
   const task = [...(state.data.today || []), ...(state.data.week || [])].find(t => String(t.taskId) === String(taskId));
+  state.pendingCompletionTask = task || { taskId: taskId, task: "Task" };
+  state.completionError = "";
+  render();
+
+  setTimeout(() => {
+    const input = document.getElementById("actual-minutes-input");
+    if (input) input.focus();
+  }, 50);
+}
+
+function closeCompletionPrompt() {
+  state.pendingCompletionTask = null;
+  state.completionError = "";
+  render();
+}
+
+function skipCompletionMinutes() {
+  if (!state.pendingCompletionTask) return;
+  completeTask(state.pendingCompletionTask.taskId, "");
+}
+
+function saveCompletionMinutes() {
+  if (!state.pendingCompletionTask) return;
+
+  const input = document.getElementById("actual-minutes-input");
+  const value = input ? String(input.value || "").trim() : "";
+
+  if (value === "") {
+    completeTask(state.pendingCompletionTask.taskId, "");
+    return;
+  }
+
+  const minutes = Number(value);
+
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240) {
+    state.completionError = "Enter a whole number from 1 to 240, or leave it blank.";
+    render();
+    return;
+  }
+
+  completeTask(state.pendingCompletionTask.taskId, minutes);
+}
+
+function completeTask(taskId, actualMinutes = "") {
+  const task = state.pendingCompletionTask || [...(state.data.today || []), ...(state.data.week || [])].find(t => String(t.taskId) === String(taskId));
+  state.pendingCompletionTask = null;
+  state.completionError = "";
   renderLoading();
-  callApi("complete", { taskId })
+
+  callApi("complete", { taskId, actualMinutes })
     .then(data => {
       state.data = addGainPercentages(data);
+
       if (task) {
-        state.localCompleted.unshift(task);
         if (state.oneThingMode) {
           state.guidedLastZone = task.zone || null;
           state.guidedLastArea = task.area || null;
@@ -607,17 +696,23 @@ function completeTask(taskId) {
           state.showWork = true;
         }
       }
+
       render();
     })
     .catch(error => renderError(error));
 }
 
-function undoLast() {
+function undoCompletion(historyRow) {
+  if (!historyRow) {
+    renderError("Unable to undo this completion because its History row was not found.");
+    return;
+  }
+
   renderLoading();
-  callApi("undo")
+
+  callApi("undo", { historyRow })
     .then(data => {
       state.data = addGainPercentages(data);
-      state.localCompleted.shift();
       state.guidedJustCompleted = null;
       render();
     })

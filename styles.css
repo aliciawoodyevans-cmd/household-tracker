@@ -387,3 +387,68 @@ h1 {
   font-size: 14px;
   line-height: 1.35;
 }
+
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 100;
+}
+
+.completion-modal {
+  width: 100%;
+  max-width: 430px;
+  background: var(--card);
+  border-radius: 22px;
+  padding: 20px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+  animation: softIn 0.2s ease;
+}
+
+.modal-eyebrow {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.modal-title {
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.modal-question {
+  font-size: 15px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.minutes-input {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font-size: 20px;
+}
+
+.modal-error {
+  color: var(--critical);
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.modal-btn {
+  margin-top: 14px;
+}
+
