@@ -1,9 +1,0 @@
-{
-  "name": "HouseFlow",
-  "short_name": "HouseFlow",
-  "start_url": ".",
-  "display": "standalone",
-  "background_color": "#f4f4f5",
-  "theme_color": "#111111",
-  "description": "A personal home health and household task dashboard."
-}

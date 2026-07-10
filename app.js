@@ -4,6 +4,11 @@ let state = {
   selectedQuickPick: null,
   selectedZone: null,
   selectedProject: null,
+  selectedRoutine: null,
+  editingProjectRow: null,
+  showAddProject: false,
+  showCompletedProjects: false,
+  projectError: "",
   showWork: false,
   oneThingMode: false,
   guidedLastZone: null,
@@ -26,6 +31,11 @@ document.querySelectorAll(".nav-btn").forEach(button => {
     state.selectedQuickPick = null;
     state.selectedZone = null;
     state.selectedProject = null;
+    state.selectedRoutine = null;
+    state.editingProjectRow = null;
+    state.showAddProject = false;
+    state.projectError = "";
+    if (state.tab !== "projects") state.showCompletedProjects = false;
     state.oneThingMode = false;
     state.guidedJustCompleted = null;
     render();
@@ -130,7 +140,9 @@ function addGainPercentages(data) {
     today: (data.today || []).map(addGain),
     week: (data.week || []).map(addGain),
     quick: (data.quick || []).map(group => ({ ...group, tasks: (group.tasks || []).map(addGain) })),
-    projects: data.projects || []
+    projects: data.projects || [],
+    routines: data.routines || [],
+    completedRoutinesToday: data.completedRoutinesToday || []
   };
 }
 
@@ -155,6 +167,11 @@ function render() {
   if (state.tab === "quick") {
     title.textContent = "Quick Picks";
     html = renderQuickPicks();
+  }
+
+  if (state.tab === "routines") {
+    title.textContent = "Routines";
+    html = renderRoutines();
   }
 
   if (state.tab === "health") {
@@ -224,26 +241,22 @@ function renderCurrentWorkGroup(title, tasks) {
 }
 
 function renderToday() {
-  const currentWork = state.data.today || [];
-  const criticalTasks = currentWork.filter(task => task.status === "critical");
-  const overdueTasks = currentWork.filter(task => task.status === "overdue");
-  const todayTasks = currentWork.filter(task => task.status === "today");
-  const today = [
-    ...sortByDueDate(criticalTasks),
-    ...sortByDueDate(overdueTasks),
-    ...sortByDueDate(todayTasks)
-  ];
-
-  const week = sortByDueDate(state.data.week || []);
+  const individualToday = state.data.today || [];
+  const individualWeek = state.data.week || [];
+  const routines = state.data.routines || [];
+  const workItems = getTodayWorkItems(individualToday, individualWeek, routines);
+  const currentItems = workItems.filter(item => ["critical", "overdue", "today"].includes(item.status));
+  const weekItems = workItems.filter(item => item.status === "week");
   const completed = state.data.completedToday || [];
-  const currentMinutes = currentWork.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
+  const completedRoutines = state.data.completedRoutinesToday || [];
+  const currentMinutes = currentItems.reduce((sum, item) => sum + Number(item.minutes || 0), 0);
   const health = state.data.health?.overall ?? 100;
 
   let html = `
     <div class="health-card">
       <div>Home Health</div>
       <div class="health-percent">${health}%</div>
-      <div class="health-detail">${currentWork.length} current tasks • ${currentMinutes} minutes</div>
+      <div class="health-detail">${currentItems.length} current items • ${currentMinutes} minutes</div>
       ${state.oneThingMode ? "" : `
         <button class="complete-btn" onclick="startWorking()">View All Tasks</button>
         <button class="complete-btn" onclick="doOneThing()">Do One Thing</button>
@@ -254,37 +267,129 @@ function renderToday() {
   `;
 
   if (state.oneThingMode) {
-    html += renderGuidedMode(today, week);
+    html += renderGuidedMode(sortByDueDate(individualToday), sortByDueDate(individualWeek));
   } else if (state.showWork) {
     html += `
       <div class="summary-card">
-        ${summaryItem("Critical", criticalTasks.length)}
-        ${summaryItem("Overdue", overdueTasks.length)}
-        ${summaryItem("Due Today", todayTasks.length)}
-        ${summaryItem("This Week", week.length)}
+        ${summaryItem("Critical", countWorkItemsByStatus(workItems, "critical"))}
+        ${summaryItem("Overdue", countWorkItemsByStatus(workItems, "overdue"))}
+        ${summaryItem("Due Today", countWorkItemsByStatus(workItems, "today"))}
+        ${summaryItem("This Week", countWorkItemsByStatus(workItems, "week"))}
       </div>
     `;
 
-    if (currentWork.length === 0) {
-      html += `<div class="empty">No current tasks. 🎉</div>`;
+    if (workItems.length === 0) {
+      html += `<div class="empty">No current or upcoming work. 🎉</div>`;
     } else {
-      html += renderCurrentWorkGroup("Critical", criticalTasks);
-      html += renderCurrentWorkGroup("Overdue", overdueTasks);
-      html += renderCurrentWorkGroup("Due Today", todayTasks);
-    }
-
-    if (week.length > 0) {
-      html += `<div class="section-title">Coming Up This Week</div>`;
-      week.slice(0, 8).forEach(task => html += taskCard(task));
+      html += `<div class="section-title">Work List</div>`;
+      workItems.forEach(item => html += workItemCard(item));
     }
   }
 
+  if (completedRoutines.length > 0) {
+    html += `<div class="section-title">Completed Routines Today</div>`;
+    completedRoutines.forEach(routine => html += completedRoutineCard(routine));
+  }
+
   if (completed.length > 0) {
-    html += `<div class="section-title">Completed Today</div>`;
+    html += `<div class="section-title">Completed Tasks Today</div>`;
     completed.forEach(task => html += completedCard(task));
   }
 
   return html;
+}
+
+function getTodayWorkItems(individualToday, individualWeek, routines) {
+  const taskItems = [...individualToday, ...individualWeek].map(task => ({
+    kind: "task",
+    id: `task-${task.taskId}`,
+    status: task.status,
+    due: task.due,
+    minutes: Number(task.minutes || 0),
+    title: task.task,
+    task: task
+  }));
+
+  const routineItems = (routines || [])
+    .filter(routine => ["critical", "overdue", "today", "week"].includes(routine.status))
+    .map(routine => {
+      const remainingTasks = (routine.tasks || []).filter(task => !task.done && task.status !== "missing");
+      const remainingMinutes = remainingTasks.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
+
+      return {
+        kind: "routine",
+        id: `routine-${routine.routineId}`,
+        status: routine.status,
+        due: routine.nextDue,
+        minutes: remainingMinutes || Number(routine.totalMinutes || 0),
+        title: routine.name,
+        routine: routine
+      };
+    });
+
+  return [...taskItems, ...routineItems].sort(sortWorkItems);
+}
+
+function sortWorkItems(a, b) {
+  const dateDiff = getSortableDate(a.due) - getSortableDate(b.due);
+  if (dateDiff !== 0) return dateDiff;
+
+  const statusOrder = {
+    critical: 1,
+    overdue: 2,
+    today: 3,
+    week: 4
+  };
+
+  const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+  if (statusDiff !== 0) return statusDiff;
+
+  return String(a.title || "").localeCompare(String(b.title || ""));
+}
+
+function countWorkItemsByStatus(items, status) {
+  return items.filter(item => item.status === status).length;
+}
+
+function workItemCard(item) {
+  if (item.kind === "routine") return todayRoutineCard(item.routine);
+  return taskCard(item.task);
+}
+
+function todayRoutineCard(routine) {
+  const statusLabel = getRoutineStatusLabel(routine.status);
+  const remainingTasks = (routine.tasks || []).filter(task => !task.done && task.status !== "missing");
+  const taskList = (routine.tasks || []).map(task => todayRoutineTaskLine(task)).join("");
+  const remainingMinutes = remainingTasks.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
+  const minutes = remainingMinutes || Number(routine.totalMinutes || 0);
+
+  return `
+    <div class="task-card routine-work-card ${routine.status}">
+      <div class="task-title">▶ ${routine.name}</div>
+      <div class="task-meta">${routine.zone || "No zone"} • ${routine.area || "No area"} • ${minutes} min • Due ${formatDisplayDate(routine.nextDue)}</div>
+      <div class="routine-detail">Occurrence ${routine.currentStep} of ${routine.totalSteps} • ${routine.doneCount || 0} done • ${routine.remainingCount || 0} remaining</div>
+      <div class="routine-progress-wrap"><div class="routine-progress-bar" style="width:${Math.min(100, Math.max(0, Number(routine.progressPercent || 0)))}%"></div></div>
+      <div class="routine-inline-list">${taskList}</div>
+      <button class="complete-btn" onclick="event.stopPropagation(); completeFullRoutine('${escapeQuotes(routine.routineId)}')">
+        ${Number(routine.doneCount || 0) > 0 ? "Complete Remaining Routine" : "Complete Full Routine"}
+      </button>
+    </div>
+  `;
+}
+
+function todayRoutineTaskLine(task) {
+  const rowClass = task.done ? "done" : task.status;
+  const label = task.done ? "Done" : getTaskStatusLabel(task.status);
+
+  return `
+    <div class="today-routine-task-line ${rowClass}">
+      <div>
+        <strong>${task.taskOrder}. ${task.task}</strong>
+        <span>${task.minutes} min • ${label}</span>
+      </div>
+      ${task.status === "missing" || task.done ? "" : `<button class="small-complete-btn" onclick="event.stopPropagation(); openCompletionPrompt('${escapeQuotes(task.taskId)}')">Complete</button>`}
+    </div>
+  `;
 }
 
 function renderWeeklyMomentumCard() {
@@ -406,6 +511,124 @@ function renderQuickPicks() {
   return html;
 }
 
+
+function renderRoutines() {
+  const routines = state.data.routines || [];
+
+  if (routines.length === 0) {
+    return `
+      <div class="empty">
+        No routine cycles yet.<br><br>
+        Add rows to Routine Master and Routine Steps to create looping routines.
+      </div>
+    `;
+  }
+
+  let html = "";
+
+  routines.forEach(routine => {
+    html += routineCard(routine);
+  });
+
+  return html;
+}
+
+function routineCard(routine) {
+  const isSelected = state.selectedRoutine === routine.routineId;
+  const taskLabel = routine.tasks.length === 1 ? "1 task" : `${routine.tasks.length} tasks`;
+  const statusLabel = getRoutineStatusLabel(routine.status);
+
+  return `
+    <div class="routine-card ${isSelected ? "selected-routine" : ""}" onclick="selectRoutine('${escapeQuotes(routine.routineId)}')">
+      <div class="routine-title">${isSelected ? "▼" : "▶"} ${routine.name}</div>
+      <div class="routine-meta">${routine.zone || "No zone"} • ${routine.area || "No area"}</div>
+      <div class="routine-detail">Occurrence ${routine.currentStep} of ${routine.totalSteps} • ${taskLabel} • ${routine.totalMinutes} min</div>
+      <div class="routine-detail">${routine.doneCount || 0} done • ${routine.remainingCount || 0} remaining</div>
+      <div class="routine-progress-wrap"><div class="routine-progress-bar" style="width:${Math.min(100, Math.max(0, Number(routine.progressPercent || 0)))}%"></div></div>
+      <div class="routine-detail">${statusLabel}${routine.nextDue ? ` • Due ${formatDisplayDate(routine.nextDue)}` : ""}</div>
+      ${routine.notes ? `<div class="routine-notes">${routine.notes}</div>` : ""}
+      ${isSelected ? renderRoutineTasks(routine) : ""}
+    </div>
+  `;
+}
+
+function renderRoutineTasks(routine) {
+  let html = `<div class="routine-task-list">`;
+
+  routine.tasks.forEach(task => {
+    html += routineTaskRow(task);
+  });
+
+  html += `
+    <button class="complete-btn" onclick="event.stopPropagation(); completeFullRoutine('${escapeQuotes(routine.routineId)}')">
+      ${Number(routine.doneCount || 0) > 0 ? "Complete Remaining Routine" : "Complete Full Routine"}
+    </button>
+  `;
+
+  html += `</div>`;
+  return html;
+}
+
+function routineTaskRow(task) {
+  const statusLabel = task.done ? "Done" : getTaskStatusLabel(task.status);
+  const rowClass = task.done ? "done" : task.status;
+  const completedText = task.done && task.completedAt ? ` • Completed ${formatDisplayDate(task.completedAt)}` : "";
+
+  return `
+    <div class="routine-task-row ${rowClass}">
+      <div>
+        <div class="routine-task-title">${task.taskOrder}. ${task.task}</div>
+        <div class="routine-task-meta">${task.minutes} min • ${statusLabel}${completedText}${!task.done && task.due ? ` • Task due ${formatDisplayDate(task.due)}` : ""}</div>
+      </div>
+      ${task.status === "missing" || task.done ? "" : `<button class="small-complete-btn" onclick="event.stopPropagation(); openCompletionPrompt('${escapeQuotes(task.taskId)}')">Complete</button>`}
+    </div>
+  `;
+}
+
+function getRoutineStatusLabel(status) {
+  const labels = {
+    critical: "Critical",
+    overdue: "Overdue",
+    today: "Due today",
+    week: "Due this week",
+    later: "Not due yet"
+  };
+
+  return labels[status] || "Not due yet";
+}
+
+function getTaskStatusLabel(status) {
+  const labels = {
+    critical: "Critical",
+    overdue: "Overdue",
+    today: "Due today",
+    week: "This week",
+    later: "Not due",
+    missing: "Missing task"
+  };
+
+  return labels[status] || "Not due";
+}
+
+function completeFullRoutine(routineId) {
+  const previousTab = state.tab;
+  renderLoading();
+
+  callApi("completeRoutine", { routineId })
+    .then(data => {
+      state.data = addGainPercentages(data);
+      state.selectedRoutine = routineId;
+      state.tab = previousTab;
+      render();
+    })
+    .catch(error => renderError(error));
+}
+
+function selectRoutine(id) {
+  state.selectedRoutine = state.selectedRoutine === id ? null : id;
+  render();
+}
+
 function renderHomeHealth() {
   const health = state.data.health;
   if (!health) return `<div class="empty">No health data available.</div>`;
@@ -465,6 +688,8 @@ function renderDiagnostics() {
       ${diagnosticRow("API Connected", "Yes", "ok")}
       ${diagnosticRow("Last Sync", d.lastSync || "", "ok")}
       ${diagnosticRow("Tasks Loaded", d.taskCounts?.totalTasks ?? 0, "ok")}
+      ${diagnosticRow("Individual Tasks", d.taskCounts?.individualTasks ?? 0, "ok")}
+      ${diagnosticRow("Routine Controlled Tasks", d.taskCounts?.routineControlledTasks ?? 0, "ok")}
       ${diagnosticRow("Projects Loaded", d.projectCounts?.totalProjects ?? 0, "ok")}
       ${diagnosticRow("History Records", d.historyCounts?.totalRecords ?? 0, "ok")}
     </div>
@@ -475,6 +700,17 @@ function renderDiagnostics() {
       ${diagnosticRow("Overdue", d.taskCounts?.overdue ?? 0, statusForCount(d.taskCounts?.overdue))}
       ${diagnosticRow("Due Today", d.taskCounts?.today ?? 0, "ok")}
       ${diagnosticRow("This Week", d.taskCounts?.week ?? 0, "ok")}
+    </div>
+
+    <div class="diagnostic-card">
+      <div class="diagnostic-title">Routine Health</div>
+      ${diagnosticRow("Routines", d.routineCounts?.totalRoutines ?? 0, "ok")}
+      ${diagnosticRow("Active Routines", d.routineCounts?.activeRoutines ?? 0, "ok")}
+      ${diagnosticRow("Routine Step Rows", d.routineCounts?.stepRows ?? 0, "ok")}
+      ${diagnosticRow("Routine History Records", d.routineCounts?.historyRecords ?? 0, "ok")}
+      ${diagnosticRow("Missing Task IDs", d.routineCounts?.missingTaskIds ?? 0, statusForCount(d.routineCounts?.missingTaskIds))}
+      ${diagnosticRow("Individual Tasks Inside Routines", d.routineCounts?.individualTasksInRoutines ?? 0, statusForCount(d.routineCounts?.individualTasksInRoutines))}
+      ${diagnosticRow("Missing Routine IDs", d.routineCounts?.missingRoutineIds ?? 0, statusForCount(d.routineCounts?.missingRoutineIds))}
     </div>
 
     <div class="diagnostic-card">
@@ -496,6 +732,8 @@ function renderDiagnostics() {
       ${diagnosticRow("Missing Estimated Minutes", d.taskIssues?.missingEstimatedMinutes ?? 0, statusForCount(d.taskIssues?.missingEstimatedMinutes))}
       ${diagnosticRow("Negative or Blank Intervals", d.taskIssues?.badIntervals ?? 0, statusForCount(d.taskIssues?.badIntervals))}
       ${diagnosticRow("Unknown Task Types", d.taskIssues?.unknownTaskTypes ?? 0, statusForCount(d.taskIssues?.unknownTaskTypes))}
+      ${diagnosticRow("Invalid Schedule Modes", d.taskIssues?.invalidScheduleModes ?? 0, statusForCount(d.taskIssues?.invalidScheduleModes))}
+      ${diagnosticRow("Blank Schedule Modes", d.taskCounts?.blankScheduleModes ?? 0, "ok")}
     </div>
 
     <div class="diagnostic-card">
@@ -560,6 +798,8 @@ function collectDiagnosticWarnings(d) {
   if ((d.taskIssues?.invalidPreferredMonths || 0) > 0) warnings.push("Some Preferred Months values are not valid.");
   if ((d.historyIssues?.orphanedTaskIds || 0) > 0) warnings.push("Some History records refer to Task IDs that are no longer in Task Master.");
   if ((d.projectIssues?.missingStatus || 0) > 0) warnings.push("Some projects are missing a status.");
+  if ((d.taskIssues?.invalidScheduleModes || 0) > 0) warnings.push("Some tasks have invalid Schedule Mode values.");
+  if ((d.routineCounts?.individualTasksInRoutines || 0) > 0) warnings.push("Some routine step tasks are still marked Individual. Mark them Routine to prevent duplicate scheduling.");
 
   if (warnings.length === 0) warnings.push("No warnings found.");
 
@@ -568,24 +808,126 @@ function collectDiagnosticWarnings(d) {
 
 function renderProjects() {
   const projects = state.data.projects || [];
-  if (projects.length === 0) return `<div class="empty">No projects yet.</div>`;
-  let html = "";
-  const activeProjects = projects.filter(project => project.status !== "Completed");
-  const completedProjects = projects.filter(project => project.status === "Completed");
+
+  let html = `
+    <button class="complete-btn" onclick="toggleAddProjectForm()">
+      ${state.showAddProject ? "Close Add Project" : "Add Project"}
+    </button>
+    ${state.showAddProject ? renderAddProjectForm() : ""}
+  `;
+
+  html += renderProjectSummary(projects);
+
+  if (projects.length === 0) {
+    html += `<div class="empty">No projects yet.</div>`;
+    return html;
+  }
+
+  const activeProjects = sortProjects(projects.filter(project => project.status !== "Completed"));
+  const completedProjects = sortProjects(projects.filter(project => project.status === "Completed"));
+
   if (activeProjects.length > 0) {
     html += `<div class="section-title">Active Projects</div>`;
     activeProjects.forEach(project => html += projectCard(project));
   }
+
   if (completedProjects.length > 0) {
-    html += `<div class="section-title">Completed Projects</div>`;
-    completedProjects.forEach(project => html += projectCard(project));
+    html += `
+      <button class="secondary-btn" onclick="toggleCompletedProjects()">
+        ${state.showCompletedProjects ? "Hide Completed Projects" : `Show Completed Projects (${completedProjects.length})`}
+      </button>
+    `;
+
+    if (state.showCompletedProjects) {
+      html += `<div class="section-title">Completed Projects</div>`;
+      completedProjects.forEach(project => html += projectCard(project));
+    }
   }
+
   return html;
+}
+
+function toggleCompletedProjects() {
+  state.showCompletedProjects = !state.showCompletedProjects;
+  render();
+}
+
+function renderProjectSummary(projects) {
+  const counts = {
+    notStarted: projects.filter(project => !project.status || project.status === "Not Started").length,
+    inProgress: projects.filter(project => project.status === "In Progress").length,
+    onHold: projects.filter(project => project.status === "On Hold").length,
+    completed: projects.filter(project => project.status === "Completed").length
+  };
+
+  return `
+    <div class="summary-card project-summary-card">
+      ${summaryItem("In Progress", counts.inProgress)}
+      ${summaryItem("Not Started", counts.notStarted)}
+      ${summaryItem("On Hold", counts.onHold)}
+      ${summaryItem("Completed", counts.completed)}
+    </div>
+  `;
+}
+
+function sortProjects(projects) {
+  const statusOrder = {
+    "In Progress": 1,
+    "Not Started": 2,
+    "": 2,
+    "On Hold": 3,
+    "Completed": 4
+  };
+
+  return projects.slice().sort((a, b) => {
+    const aStatus = a.status || "";
+    const bStatus = b.status || "";
+    const statusDiff = (statusOrder[aStatus] || 99) - (statusOrder[bStatus] || 99);
+    if (statusDiff !== 0) return statusDiff;
+
+    return String(a.project || "").localeCompare(String(b.project || ""));
+  });
+}
+
+function renderAddProjectForm() {
+  return `
+    <div class="project-form-card">
+      <div class="form-title">Add Project</div>
+
+      <label class="form-label">Project Name</label>
+      <input id="project-name-input" class="form-input" type="text" placeholder="Install dishwasher" />
+
+      <label class="form-label">Area</label>
+      <input id="project-area-input" class="form-input" type="text" placeholder="Kitchen" />
+
+      <label class="form-label">Status</label>
+      <select id="project-status-input" class="form-input">
+        <option>Not Started</option>
+        <option>In Progress</option>
+        <option>On Hold</option>
+        <option>Completed</option>
+      </select>
+
+      <label class="form-label">Estimated Hours</label>
+      <input id="project-hours-input" class="form-input" type="text" placeholder="Optional" />
+
+      <label class="form-label">Estimated Cost</label>
+      <input id="project-cost-input" class="form-input" type="text" placeholder="Optional" />
+
+      <label class="form-label">Notes</label>
+      <textarea id="project-notes-input" class="form-textarea" placeholder="Optional"></textarea>
+
+      ${state.projectError ? `<div class="modal-error">${state.projectError}</div>` : ""}
+
+      <button class="complete-btn" onclick="addProject()">Save Project</button>
+    </div>
+  `;
 }
 
 function projectCard(project) {
   const isSelected = state.selectedProject === project.row;
   const statusClass = getStatusClass(project.status);
+
   return `
     <div class="project-card ${isSelected ? "selected-project" : ""}" onclick="selectProject(${project.row})">
       <div class="project-title">${isSelected ? "▼" : "▶"} ${project.project}</div>
@@ -596,10 +938,175 @@ function projectCard(project) {
           ${project.hours ? `<div class="project-row"><strong>Hours</strong> ${project.hours}</div>` : ""}
           ${project.cost ? `<div class="project-row"><strong>Cost</strong> ${formatCost(project.cost)}</div>` : ""}
           ${project.notes ? `<div class="project-notes">${project.notes}</div>` : ""}
+
+          <div class="subsection-title">Change Status</div>
+          <div class="status-button-grid" onclick="event.stopPropagation()">
+            ${projectStatusButton(project, "Not Started")}
+            ${projectStatusButton(project, "In Progress")}
+            ${projectStatusButton(project, "On Hold")}
+            ${projectStatusButton(project, "Completed")}
+          </div>
+
+          <button class="secondary-btn" onclick="event.stopPropagation(); toggleEditProject(${project.row})">
+            ${state.editingProjectRow === project.row ? "Close Details Editor" : "Edit Details"}
+          </button>
+
+          ${state.editingProjectRow === project.row ? renderEditProjectForm(project) : ""}
         </div>
       ` : ""}
     </div>
   `;
+}
+
+function projectStatusButton(project, status) {
+  const active = project.status === status || (!project.status && status === "Not Started");
+
+  return `
+    <button class="status-btn ${active ? "active-status" : ""}" onclick="updateProjectStatus(${project.row}, '${escapeQuotes(status)}')">
+      ${status}
+    </button>
+  `;
+}
+
+function toggleAddProjectForm() {
+  state.showAddProject = !state.showAddProject;
+  state.projectError = "";
+  render();
+}
+
+function addProject() {
+  const project = getInputValue("project-name-input");
+  const area = getInputValue("project-area-input");
+  const status = getInputValue("project-status-input") || "Not Started";
+  const hours = getInputValue("project-hours-input");
+  const cost = getInputValue("project-cost-input");
+  const notes = getInputValue("project-notes-input");
+
+  if (!project) {
+    state.projectError = "Project name is required.";
+    render();
+    return;
+  }
+
+  renderLoading();
+
+  callApi("addProject", {
+    project,
+    area,
+    status,
+    hours,
+    cost,
+    notes
+  })
+    .then(data => {
+      state.data = addGainPercentages(data);
+      state.showAddProject = false;
+      state.projectError = "";
+      state.tab = "projects";
+      render();
+    })
+    .catch(error => renderError(error));
+}
+
+function updateProjectStatus(row, status) {
+  renderLoading();
+
+  callApi("updateProjectStatus", { row, status })
+    .then(data => {
+      state.data = addGainPercentages(data);
+      state.selectedProject = row;
+      state.tab = "projects";
+      render();
+    })
+    .catch(error => renderError(error));
+}
+
+function getInputValue(id) {
+  const element = document.getElementById(id);
+  return element ? String(element.value || "").trim() : "";
+}
+
+
+function renderEditProjectForm(project) {
+  return `
+    <div class="project-edit-card" onclick="event.stopPropagation()">
+      <div class="form-title">Edit Project Details</div>
+
+      <label class="form-label">Project Name</label>
+      <input id="edit-project-name-${project.row}" class="form-input" type="text" value="${escapeHtmlAttribute(project.project || "")}" />
+
+      <label class="form-label">Area</label>
+      <input id="edit-project-area-${project.row}" class="form-input" type="text" value="${escapeHtmlAttribute(project.area || "")}" />
+
+      <label class="form-label">Estimated Hours</label>
+      <input id="edit-project-hours-${project.row}" class="form-input" type="text" value="${escapeHtmlAttribute(project.hours || "")}" />
+
+      <label class="form-label">Estimated Cost</label>
+      <input id="edit-project-cost-${project.row}" class="form-input" type="text" value="${escapeHtmlAttribute(project.cost || "")}" />
+
+      <label class="form-label">Notes</label>
+      <textarea id="edit-project-notes-${project.row}" class="form-textarea">${escapeHtmlText(project.notes || "")}</textarea>
+
+      ${state.projectError ? `<div class="modal-error">${state.projectError}</div>` : ""}
+
+      <button class="complete-btn" onclick="saveProjectDetails(${project.row})">Save Details</button>
+    </div>
+  `;
+}
+
+function toggleEditProject(row) {
+  state.editingProjectRow = state.editingProjectRow === row ? null : row;
+  state.projectError = "";
+  render();
+}
+
+function saveProjectDetails(row) {
+  const project = getInputValue(`edit-project-name-${row}`);
+  const area = getInputValue(`edit-project-area-${row}`);
+  const hours = getInputValue(`edit-project-hours-${row}`);
+  const cost = getInputValue(`edit-project-cost-${row}`);
+  const notes = getInputValue(`edit-project-notes-${row}`);
+
+  if (!project) {
+    state.projectError = "Project name is required.";
+    render();
+    return;
+  }
+
+  renderLoading();
+
+  callApi("updateProjectDetails", {
+    row,
+    project,
+    area,
+    hours,
+    cost,
+    notes
+  })
+    .then(data => {
+      state.data = addGainPercentages(data);
+      state.selectedProject = row;
+      state.editingProjectRow = null;
+      state.projectError = "";
+      state.tab = "projects";
+      render();
+    })
+    .catch(error => renderError(error));
+}
+
+function escapeHtmlAttribute(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeHtmlText(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function getStatusClass(status) {
@@ -647,6 +1154,36 @@ function completedCard(task) {
     </div>
   `;
 }
+
+
+function completedRoutineCard(routine) {
+  return `
+    <div class="completed-card routine-completed-card">
+      <strong>${routine.routineName}</strong>
+      <div class="task-meta">${routine.zone || ""}${routine.area ? " • " + routine.area : ""}</div>
+      <div class="task-meta">Occurrence ${routine.cycleStep} of ${routine.totalSteps} • ${routine.completionType || "Routine Completed"}</div>
+      <div class="task-meta">${routine.completedTaskNames || ""}</div>
+      <button class="undo-btn" onclick="undoRoutineCompletion(${routine.routineHistoryRow})">Undo Routine Completion</button>
+    </div>
+  `;
+}
+
+function undoRoutineCompletion(routineHistoryRow) {
+  if (!routineHistoryRow) {
+    renderError("Unable to undo this routine completion because its Routine History row was not found.");
+    return;
+  }
+
+  renderLoading();
+
+  callApi("undoRoutine", { routineHistoryRow })
+    .then(data => {
+      state.data = addGainPercentages(data);
+      render();
+    })
+    .catch(error => renderError(error));
+}
+
 
 function renderCompletionModal() {
   const task = state.pendingCompletionTask;
@@ -791,7 +1328,11 @@ function selectZone(zone) {
 }
 
 function selectProject(row) {
-  state.selectedProject = state.selectedProject === row ? null : row;
+  const nextSelection = state.selectedProject === row ? null : row;
+  state.selectedProject = nextSelection;
+  if (state.editingProjectRow !== nextSelection) {
+    state.editingProjectRow = null;
+  }
   render();
 }
 
