@@ -494,21 +494,163 @@ function getBestTask(today, week) {
 }
 
 function renderQuickPicks() {
-  const groups = state.data.quick || [];
-  const filteredGroups = groups.filter(group => group.name !== "Surprise me");
-  if (filteredGroups.length === 0) return `<div class="empty">No quick picks right now.</div>`;
-  let html = `<div class="quick-grid">`;
-  filteredGroups.forEach(group => {
-    html += `<div class="quick-card"><button class="quick-btn" onclick="selectQuickPick('${escapeQuotes(group.name)}')">${group.name}</button></div>`;
-  });
-  html += `</div>`;
-  if (state.selectedQuickPick) {
-    const group = filteredGroups.find(g => g.name === state.selectedQuickPick);
-    html += `<div class="section-title">${state.selectedQuickPick}</div>`;
-    if (!group || group.tasks.length === 0) html += `<div class="empty">No tasks found.</div>`;
-    else group.tasks.forEach(task => html += taskCard(task));
+  const groups = buildQuickPickGroups();
+
+  if (groups.length === 0) {
+    return `<div class="empty">No quick picks right now.</div>`;
   }
+
+  let html = `<div class="quick-grid">`;
+
+  groups.forEach(group => {
+    html += `
+      <div class="quick-card">
+        <button class="quick-btn" onclick="selectQuickPick('${escapeQuotes(group.name)}')">
+          ${group.name}
+        </button>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+
+  if (state.selectedQuickPick) {
+    const group = groups.find(g => g.name === state.selectedQuickPick);
+
+    if (group) {
+      html += `<div class="section-title">${state.selectedQuickPick}</div>`;
+      html += `<div class="quick-detail">${group.description || ""}</div>`;
+
+      if (!group.items || group.items.length === 0) {
+        html += `<div class="empty">No work found.</div>`;
+      } else {
+        group.items.forEach(item => html += quickPickItemCard(item));
+      }
+    }
+  }
+
   return html;
+}
+
+function buildQuickPickGroups() {
+  const items = getQuickPickWorkItems();
+  const groups = [];
+
+  [5, 10, 20, 30].forEach(minutes => {
+    const matching = items
+      .filter(item => Number(item.minutes || 0) <= minutes)
+      .slice(0, 10);
+
+    if (matching.length > 0) {
+      groups.push({
+        name: `${minutes} minutes`,
+        description: `Tasks and routines estimated at ${minutes} minutes or less.`,
+        items: matching
+      });
+    }
+  });
+
+  const routineItems = items
+    .filter(item => item.kind === "routine")
+    .slice(0, 8);
+
+  if (routineItems.length > 0) {
+    groups.push({
+      name: "Routine Work",
+      description: "Due routines and routine occurrences that are coming up soon.",
+      items: routineItems
+    });
+  }
+
+  const sameArea = buildSameAreaQuickPickGroup(items);
+
+  if (sameArea) {
+    groups.push(sameArea);
+  }
+
+  return groups;
+}
+
+function getQuickPickWorkItems() {
+  const taskItems = [...(state.data.today || []), ...(state.data.week || [])]
+    .map(task => ({
+      kind: "task",
+      id: `task-${task.taskId}`,
+      status: task.status,
+      due: task.due,
+      minutes: Number(task.minutes || 0),
+      zone: task.zone || "",
+      area: task.area || "",
+      title: task.task,
+      task: task
+    }));
+
+  const routineItems = (state.data.routines || [])
+    .filter(routine => ["critical", "overdue", "today", "week"].includes(routine.status))
+    .map(routine => {
+      const remainingTasks = (routine.tasks || []).filter(task => !task.done && task.status !== "missing");
+      const remainingMinutes = remainingTasks.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
+
+      return {
+        kind: "routine",
+        id: `routine-${routine.routineId}`,
+        status: routine.status,
+        due: routine.nextDue,
+        minutes: remainingMinutes || Number(routine.totalMinutes || 0),
+        zone: routine.zone || "",
+        area: routine.area || "",
+        title: routine.name,
+        routine: routine
+      };
+    });
+
+  return [...taskItems, ...routineItems].sort(sortWorkItems);
+}
+
+function buildSameAreaQuickPickGroup(items) {
+  const areaMap = {};
+
+  items.forEach(item => {
+    const key = `${item.zone || "Other"}||${item.area || "Other"}`;
+
+    if (!areaMap[key]) {
+      areaMap[key] = {
+        zone: item.zone || "Other",
+        area: item.area || "Other",
+        items: []
+      };
+    }
+
+    areaMap[key].items.push(item);
+  });
+
+  const best = Object.values(areaMap)
+    .filter(group => group.items.length >= 2)
+    .sort((a, b) => {
+      const countDiff = b.items.length - a.items.length;
+      if (countDiff !== 0) return countDiff;
+
+      const minuteDiff = a.items.reduce((sum, item) => sum + Number(item.minutes || 0), 0) -
+        b.items.reduce((sum, item) => sum + Number(item.minutes || 0), 0);
+
+      return minuteDiff;
+    })[0];
+
+  if (!best) return null;
+
+  return {
+    name: "Same Area",
+    description: `${best.area}: grouped work you can do while you are already there.`,
+    items: best.items.slice(0, 10)
+  };
+}
+
+function quickPickItemCard(item) {
+  if (item.kind === "routine") {
+    return todayRoutineCard(item.routine);
+  }
+
+  return taskCard(item.task);
 }
 
 
