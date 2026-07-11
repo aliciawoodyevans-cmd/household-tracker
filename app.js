@@ -538,34 +538,16 @@ function buildQuickPickGroups() {
   const groups = [];
 
   [5, 10, 20, 30].forEach(minutes => {
-    const plan = buildMinutePlan(items, minutes);
+    const plan = buildSmartMinutePlan(items, minutes);
 
     if (plan.length > 0) {
       groups.push({
         name: `${minutes} Minutes`,
-        description: `One suggested work plan totaling about ${minutes} minutes or less.`,
+        description: `One suggested work plan totaling about ${minutes} minutes or less. Same-area bundles are preferred when they make sense.`,
         items: plan
       });
     }
   });
-
-  const sameArea = buildSameAreaQuickPickGroup(items);
-
-  if (sameArea) {
-    groups.push(sameArea);
-  }
-
-  const routineItems = items
-    .filter(item => item.kind === "routine")
-    .slice(0, 8);
-
-  if (routineItems.length > 0) {
-    groups.push({
-      name: "Routine Work",
-      description: "Due routines and routine occurrences that are coming up soon.",
-      items: routineItems
-    });
-  }
 
   return dedupeQuickPickGroups(groups);
 }
@@ -579,23 +561,123 @@ function dedupeQuickPickGroups(groups) {
   });
 }
 
-function buildMinutePlan(items, targetMinutes) {
+
+function buildSmartMinutePlan(items, targetMinutes) {
+  const eligibleItems = getEligibleQuickPickItems(items, targetMinutes);
+  const candidates = [];
+
+  const routineAreaPlan = buildBestRoutineAreaPlan(eligibleItems, targetMinutes);
+  if (routineAreaPlan.length > 0) candidates.push(routineAreaPlan);
+
+  const bestSingle = buildBestSingleItemPlan(eligibleItems, targetMinutes);
+  if (bestSingle.length > 0) candidates.push(bestSingle);
+
+  const sameAreaPlan = buildBestSameAreaMinutePlan(eligibleItems, targetMinutes);
+  if (sameAreaPlan.length > 0) candidates.push(sameAreaPlan);
+
+  const mixedPlan = buildPriorityMinutePlan(eligibleItems, targetMinutes);
+  if (mixedPlan.length > 0) candidates.push(mixedPlan);
+
+  if (candidates.length === 0) return [];
+
+  return candidates.sort((a, b) => scoreQuickPickPlan(b, targetMinutes) - scoreQuickPickPlan(a, targetMinutes))[0];
+}
+
+function getEligibleQuickPickItems(items, targetMinutes) {
+  return (items || []).filter(item => {
+    if (targetMinutes <= 5) return true;
+
+    const isSelf = String(item.zone || "").toLowerCase() === "self" ||
+      String(item.area || "").toLowerCase() === "self";
+
+    if (!isSelf) return true;
+
+    return isPastDueDate(item.due);
+  });
+}
+
+function isPastDueDate(value) {
+  if (!value) return false;
+
+  const due = new Date(value);
+  if (isNaN(due.getTime())) return false;
+
+  const today = new Date();
+  due.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  return due < today;
+}
+
+function buildBestRoutineAreaPlan(items, targetMinutes) {
+  const routines = (items || [])
+    .filter(item => item.kind === "routine")
+    .filter(item => Number(item.minutes || 0) > 0 && Number(item.minutes || 0) <= targetMinutes)
+    .sort(compareQuickPickItems);
+
+  const plans = routines.map(routine => {
+    const areaItems = (items || [])
+      .filter(item => item.id !== routine.id)
+      .filter(item => item.zone === routine.zone && item.area === routine.area)
+      .filter(item => Number(item.minutes || 0) > 0)
+      .sort(compareQuickPickItems);
+
+    const plan = [routine];
+    let total = Number(routine.minutes || 0);
+
+    areaItems.forEach(item => {
+      const minutes = Number(item.minutes || 0);
+
+      if (total + minutes <= targetMinutes) {
+        plan.push(item);
+        total += minutes;
+      }
+    });
+
+    return plan;
+  });
+
+  return plans
+    .filter(plan => plan.length > 0)
+    .sort((a, b) => scoreRoutineAreaPlan(b, targetMinutes) - scoreRoutineAreaPlan(a, targetMinutes))[0] || [];
+}
+
+function scoreRoutineAreaPlan(plan, targetMinutes) {
+  const baseScore = scoreQuickPickPlan(plan, targetMinutes);
+  const routineAnchorBonus = (plan || []).some(item => item.kind === "routine") ? 4500 : 0;
+  const relatedTaskBonus = Math.max(0, plan.length - 1) * 1800;
+  const sameAreaBonus = isSingleAreaPlan(plan) ? 2500 : 0;
+  const fillBonus = getPlanMinutes(plan) >= targetMinutes * 0.75 ? 1000 : 0;
+
+  return baseScore + routineAnchorBonus + relatedTaskBonus + sameAreaBonus + fillBonus;
+}
+
+function buildBestSingleItemPlan(items, targetMinutes) {
+  const best = (items || [])
+    .filter(item => Number(item.minutes || 0) > 0 && Number(item.minutes || 0) <= targetMinutes)
+    .sort(compareQuickPickItems)[0];
+
+  return best ? [best] : [];
+}
+
+function buildPriorityMinutePlan(items, targetMinutes) {
   const plan = [];
   let total = 0;
 
-  items.forEach(item => {
-    const minutes = Number(item.minutes || 0);
+  (items || [])
+    .filter(item => Number(item.minutes || 0) > 0 && Number(item.minutes || 0) <= targetMinutes)
+    .sort(compareQuickPickItems)
+    .forEach(item => {
+      const minutes = Number(item.minutes || 0);
 
-    if (minutes <= 0) return;
-
-    if (total + minutes <= targetMinutes) {
-      plan.push(item);
-      total += minutes;
-    }
-  });
+      if (total + minutes <= targetMinutes) {
+        plan.push(item);
+        total += minutes;
+      }
+    });
 
   if (plan.length === 0) {
-    const smallest = items
+    const smallest = (items || [])
       .filter(item => Number(item.minutes || 0) > 0)
       .sort((a, b) => Number(a.minutes || 0) - Number(b.minutes || 0))[0];
 
@@ -605,51 +687,70 @@ function buildMinutePlan(items, targetMinutes) {
   return plan;
 }
 
+function compareQuickPickItems(a, b) {
+  const scoreDiff = scoreQuickPickItem(b) - scoreQuickPickItem(a);
+  if (scoreDiff !== 0) return scoreDiff;
+
+  const dateDiff = getSortableDate(a.due) - getSortableDate(b.due);
+  if (dateDiff !== 0) return dateDiff;
+
+  return Number(a.minutes || 0) - Number(b.minutes || 0);
+}
+
+function scoreQuickPickItem(item) {
+  const statusBonus = {
+    critical: 10000,
+    overdue: 8000,
+    today: 6000,
+    week: 3000
+  }[item.status] || 0;
+
+  const routineBonus = item.kind === "routine" ? 1600 : 0;
+  const priorityScore = Number(item.score || 0) * 15;
+  const minutes = Math.max(1, Number(item.minutes || 1));
+
+  return statusBonus + routineBonus + priorityScore - minutes;
+}
+
+function scoreQuickPickPlan(plan, targetMinutes) {
+  const totalMinutes = getPlanMinutes(plan);
+  const itemScore = (plan || []).reduce((sum, item) => sum + scoreQuickPickItem(item), 0);
+  const fillScore = Math.min(totalMinutes, targetMinutes) * 20;
+  const overPenalty = totalMinutes > targetMinutes ? (totalMinutes - targetMinutes) * 500 : 0;
+  const tinyLowValuePenalty = totalMinutes < targetMinutes * 0.5 ? 500 : 0;
+  const areaScatterPenalty = getPlanAreaCount(plan) > 1 ? (getPlanAreaCount(plan) - 1) * 2200 : 0;
+  const sameAreaBonus = isSingleAreaPlan(plan) && plan.length >= 2 ? 1800 : 0;
+
+  return itemScore + fillScore + sameAreaBonus - overPenalty - tinyLowValuePenalty - areaScatterPenalty;
+}
+
+function getPlanAreaCount(plan) {
+  const areas = {};
+
+  (plan || []).forEach(item => {
+    const key = `${item.zone || "Other"}||${item.area || "Other"}`;
+    areas[key] = true;
+  });
+
+  return Object.keys(areas).length;
+}
+
+function isSingleAreaPlan(plan) {
+  return getPlanAreaCount(plan) === 1;
+}
+
+function buildMinutePlan(items, targetMinutes) {
+  return buildPriorityMinutePlan(items, targetMinutes);
+}
 
 function getPlanMinutes(items) {
   return (items || []).reduce((sum, item) => sum + Number(item.minutes || 0), 0);
 }
 
-function getQuickPickWorkItems() {
-  const taskItems = [...(state.data.today || []), ...(state.data.week || [])]
-    .map(task => ({
-      kind: "task",
-      id: `task-${task.taskId}`,
-      status: task.status,
-      due: task.due,
-      minutes: Number(task.minutes || 0),
-      zone: task.zone || "",
-      area: task.area || "",
-      title: task.task,
-      task: task
-    }));
-
-  const routineItems = (state.data.routines || [])
-    .filter(routine => ["critical", "overdue", "today", "week"].includes(routine.status))
-    .map(routine => {
-      const remainingTasks = (routine.tasks || []).filter(task => !task.done && task.status !== "missing");
-      const remainingMinutes = remainingTasks.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
-
-      return {
-        kind: "routine",
-        id: `routine-${routine.routineId}`,
-        status: routine.status,
-        due: routine.nextDue,
-        minutes: remainingMinutes || Number(routine.totalMinutes || 0),
-        zone: routine.zone || "",
-        area: routine.area || "",
-        title: routine.name,
-        routine: routine
-      };
-    });
-
-  return [...taskItems, ...routineItems].sort(sortWorkItems);
-}
-
-function buildSameAreaQuickPickGroup(items) {
+function buildBestSameAreaMinutePlan(items, targetMinutes) {
   const areaMap = {};
 
-  items.forEach(item => {
+  (items || []).forEach(item => {
     const key = `${item.zone || "Other"}||${item.area || "Other"}`;
 
     if (!areaMap[key]) {
@@ -663,26 +764,69 @@ function buildSameAreaQuickPickGroup(items) {
     areaMap[key].items.push(item);
   });
 
-  const best = Object.values(areaMap)
+  const plans = Object.values(areaMap)
     .filter(group => group.items.length >= 2)
+    .map(group => {
+      const plan = buildPriorityMinutePlan(group.items, targetMinutes);
+
+      return {
+        ...group,
+        plan: plan,
+        totalMinutes: getPlanMinutes(plan)
+      };
+    })
+    .filter(group => group.plan.length >= 2)
     .sort((a, b) => {
-      const countDiff = b.items.length - a.items.length;
-      if (countDiff !== 0) return countDiff;
+      const planDiff = scoreQuickPickPlan(b.plan, targetMinutes) - scoreQuickPickPlan(a.plan, targetMinutes);
+      if (planDiff !== 0) return planDiff;
 
-      const minuteDiff = a.items.reduce((sum, item) => sum + Number(item.minutes || 0), 0) -
-        b.items.reduce((sum, item) => sum + Number(item.minutes || 0), 0);
+      return String(a.area || "").localeCompare(String(b.area || ""));
+    });
 
-      return minuteDiff;
-    })[0];
-
-  if (!best) return null;
-
-  return {
-    name: "Same Area",
-    description: `${best.area}: one grouped plan for when you are already there.`,
-    items: buildMinutePlan(best.items, 30)
-  };
+  return plans[0]?.plan || [];
 }
+
+
+function getQuickPickWorkItems() {
+  const taskItems = [...(state.data.today || []), ...(state.data.week || [])]
+    .map(task => ({
+      kind: "task",
+      id: `task-${task.taskId}`,
+      status: task.status,
+      due: task.due,
+      minutes: Number(task.minutes || 0),
+      score: Number(task.score || 0),
+      zone: task.zone || "",
+      area: task.area || "",
+      title: task.task,
+      task: task
+    }));
+
+  const routineItems = (state.data.routines || [])
+    .filter(routine => ["critical", "overdue", "today", "week"].includes(routine.status))
+    .map(routine => {
+      const remainingTasks = (routine.tasks || []).filter(task => !task.done && task.status !== "missing");
+      const remainingMinutes = remainingTasks.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
+      const remainingScore = remainingTasks.reduce((sum, task) => sum + Number(task.score || 0), 0);
+
+      return {
+        kind: "routine",
+        id: `routine-${routine.routineId}`,
+        status: routine.status,
+        due: routine.nextDue,
+        minutes: remainingMinutes || Number(routine.totalMinutes || 0),
+        score: remainingScore,
+        zone: routine.zone || "",
+        area: routine.area || "",
+        title: routine.name,
+        routine: routine
+      };
+    });
+
+  return [...taskItems, ...routineItems].sort(sortWorkItems);
+}
+
+
 
 function quickPickItemCard(item) {
   if (item.kind === "routine") {
