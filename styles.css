@@ -772,3 +772,24 @@ h1 {
   line-height: 1.35;
 }
 
+
+.quick-plan-card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
+}
+
+.quick-plan-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.quick-plan-meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+

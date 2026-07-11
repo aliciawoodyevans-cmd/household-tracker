@@ -520,6 +520,7 @@ function renderQuickPicks() {
     if (group) {
       html += `<div class="section-title">${state.selectedQuickPick}</div>`;
       html += `<div class="quick-detail">${group.description || ""}</div>`;
+      html += `<div class="quick-plan-meta">${getPlanMinutes(group.items)} estimated minutes total</div>`;
 
       if (!group.items || group.items.length === 0) {
         html += `<div class="empty">No work found.</div>`;
@@ -537,18 +538,22 @@ function buildQuickPickGroups() {
   const groups = [];
 
   [5, 10, 20, 30].forEach(minutes => {
-    const matching = items
-      .filter(item => Number(item.minutes || 0) <= minutes)
-      .slice(0, 10);
+    const plan = buildMinutePlan(items, minutes);
 
-    if (matching.length > 0) {
+    if (plan.length > 0) {
       groups.push({
-        name: `${minutes} minutes`,
-        description: `Tasks and routines estimated at ${minutes} minutes or less.`,
-        items: matching
+        name: `${minutes} Minutes`,
+        description: `One suggested work plan totaling about ${minutes} minutes or less.`,
+        items: plan
       });
     }
   });
+
+  const sameArea = buildSameAreaQuickPickGroup(items);
+
+  if (sameArea) {
+    groups.push(sameArea);
+  }
 
   const routineItems = items
     .filter(item => item.kind === "routine")
@@ -562,13 +567,47 @@ function buildQuickPickGroups() {
     });
   }
 
-  const sameArea = buildSameAreaQuickPickGroup(items);
+  return dedupeQuickPickGroups(groups);
+}
 
-  if (sameArea) {
-    groups.push(sameArea);
+function dedupeQuickPickGroups(groups) {
+  const seen = {};
+  return groups.filter(group => {
+    if (seen[group.name]) return false;
+    seen[group.name] = true;
+    return true;
+  });
+}
+
+function buildMinutePlan(items, targetMinutes) {
+  const plan = [];
+  let total = 0;
+
+  items.forEach(item => {
+    const minutes = Number(item.minutes || 0);
+
+    if (minutes <= 0) return;
+
+    if (total + minutes <= targetMinutes) {
+      plan.push(item);
+      total += minutes;
+    }
+  });
+
+  if (plan.length === 0) {
+    const smallest = items
+      .filter(item => Number(item.minutes || 0) > 0)
+      .sort((a, b) => Number(a.minutes || 0) - Number(b.minutes || 0))[0];
+
+    if (smallest) plan.push(smallest);
   }
 
-  return groups;
+  return plan;
+}
+
+
+function getPlanMinutes(items) {
+  return (items || []).reduce((sum, item) => sum + Number(item.minutes || 0), 0);
 }
 
 function getQuickPickWorkItems() {
@@ -640,8 +679,8 @@ function buildSameAreaQuickPickGroup(items) {
 
   return {
     name: "Same Area",
-    description: `${best.area}: grouped work you can do while you are already there.`,
-    items: best.items.slice(0, 10)
+    description: `${best.area}: one grouped plan for when you are already there.`,
+    items: buildMinutePlan(best.items, 30)
   };
 }
 
