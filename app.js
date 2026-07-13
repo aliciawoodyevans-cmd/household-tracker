@@ -306,6 +306,7 @@ function getTodayWorkItems(individualToday, individualWeek, routines) {
     status: task.status,
     due: task.due,
     minutes: Number(task.minutes || 0),
+    score: Number(task.score || 0),
     title: task.task,
     task: task
   }));
@@ -322,18 +323,17 @@ function getTodayWorkItems(individualToday, individualWeek, routines) {
         status: routine.status,
         due: routine.nextDue,
         minutes: remainingMinutes || Number(routine.totalMinutes || 0),
+        score: Number(routine.score || 0),
         title: routine.name,
         routine: routine
       };
     });
 
-  return [...taskItems, ...routineItems].sort(sortWorkItems);
+  const uniqueItems = dedupeWorkItems([...taskItems, ...routineItems]);
+  return uniqueItems.sort(sortTodayWorkItems);
 }
 
-function sortWorkItems(a, b) {
-  const dateDiff = getSortableDate(a.due) - getSortableDate(b.due);
-  if (dateDiff !== 0) return dateDiff;
-
+function sortTodayWorkItems(a, b) {
   const statusOrder = {
     critical: 1,
     overdue: 2,
@@ -343,6 +343,49 @@ function sortWorkItems(a, b) {
 
   const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
   if (statusDiff !== 0) return statusDiff;
+
+  const dateDiff = getSortableDate(a.due) - getSortableDate(b.due);
+  if (dateDiff !== 0) return dateDiff;
+
+  const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
+  if (scoreDiff !== 0) return scoreDiff;
+
+  return String(a.title || "").localeCompare(String(b.title || ""));
+}
+
+function dedupeWorkItems(items) {
+  const seen = new Set();
+
+  return (items || []).filter(item => {
+    const key = `${item.kind || "item"}:${item.id || item.title || ""}`;
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function sortWorkItems(a, b) {
+  const statusOrder = {
+    critical: 1,
+    overdue: 2,
+    today: 3,
+    week: 4
+  };
+
+  const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+  if (statusDiff !== 0) return statusDiff;
+
+  const dateDiff = getSortableDate(a.due) - getSortableDate(b.due);
+  if (dateDiff !== 0) return dateDiff;
+
+  const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
+  if (scoreDiff !== 0) return scoreDiff;
+
+  if (a.kind !== b.kind) {
+    return a.kind === "routine" ? -1 : 1;
+  }
 
   return String(a.title || "").localeCompare(String(b.title || ""));
 }
