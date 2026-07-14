@@ -315,7 +315,7 @@ h1 {
   background: white;
   border-top: 1px solid var(--border);
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   padding: 8px;
   gap: 6px;
 }
@@ -323,10 +323,11 @@ h1 {
 .nav-btn {
   border: none;
   border-radius: 14px;
-  padding: 12px 4px;
+  padding: 10px 3px;
   background: #eeeeee;
   color: #111;
-  font-size: 10px;
+  font-size: 9px;
+  line-height: 1.1;
 }
 
 .nav-btn.active { background: #111; color: white; }
@@ -742,8 +743,11 @@ h1 {
 }
 
 .today-routine-task-line.done {
-  border-left-color: #333333;
-  opacity: 0.75;
+  border-color: #b8b8b8;
+  border-left-color: #777777;
+  background: #eeeeee;
+  color: #777777;
+  opacity: 1;
 }
 
 .today-routine-task-line.done strong {
@@ -793,3 +797,164 @@ h1 {
   margin-top: 6px;
 }
 
+
+.house-iq-summary-card {
+  text-align: left;
+}
+
+.house-iq-eyebrow {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.house-iq-label {
+  font-size: 18px;
+  font-weight: bold;
+  margin-top: 2px;
+}
+
+.house-iq-card,
+.house-iq-component {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
+}
+
+.house-iq-header,
+.house-iq-component-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.house-iq-score {
+  font-size: 46px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.house-iq-main-bar,
+.house-iq-component-bar {
+  height: 14px;
+  background: #dddddd;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.house-iq-main-bar > div,
+.house-iq-component-bar > div {
+  height: 100%;
+  background: #111111;
+}
+
+.house-iq-explainer,
+.house-iq-current,
+.house-iq-component-detail {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  margin-top: 9px;
+}
+
+.house-iq-current {
+  font-weight: bold;
+  color: var(--text);
+}
+
+.house-iq-component-header strong {
+  display: block;
+  font-size: 16px;
+}
+
+.house-iq-component-header span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.house-iq-component-score {
+  font-size: 30px;
+  font-weight: bold;
+}
+
+
+.today-score-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.today-score-grid .health-card {
+  margin-bottom: 0;
+}
+
+.home-health-overview-card {
+  border-left: 8px solid #111111;
+}
+
+.today-routine-task-line.critical {
+  background: color-mix(in srgb, var(--critical) 8%, white);
+}
+
+.today-routine-task-line.overdue {
+  background: color-mix(in srgb, var(--overdue) 8%, white);
+}
+
+.today-routine-task-line.today {
+  background: color-mix(in srgb, var(--today) 8%, white);
+}
+
+.today-routine-task-line.week {
+  background: color-mix(in srgb, var(--week) 8%, white);
+}
+
+.today-routine-task-line.missing {
+  border-left-color: #777777;
+  background: #f3f3f3;
+}
+
+@media (min-width: 440px) {
+  .today-score-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+
+
+.today-action-panel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 auto 12px;
+  max-width: 620px;
+}
+
+.today-action-panel .today-action-btn {
+  width: auto;
+  min-width: 150px;
+  margin-top: 0;
+  flex: 1 1 180px;
+  max-width: 260px;
+}
+
+.today-action-panel .today-sign-out-btn {
+  width: 100%;
+  max-width: 130px;
+  margin: 0 auto;
+  flex-basis: 100%;
+}
+
+.today-health-card,
+.house-iq-summary-card {
+  height: 100%;
+}

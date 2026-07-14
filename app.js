@@ -124,24 +124,75 @@ function loadData() {
 }
 
 function addGainPercentages(data) {
-  const allTasks = [...(data.today || []), ...(data.week || [])];
-  const totalScore = allTasks.reduce((sum, task) => sum + Number(task.score || 0), 0);
-  const missingHealth = Math.max(0, 100 - Number(data.health?.overall || 100));
-  const addGain = task => {
-    const score = Number(task.score || 0);
-    let gainPercent = 0;
-    if (totalScore > 0 && missingHealth > 0) {
-      gainPercent = Math.max(1, Math.round((score / totalScore) * missingHealth));
-    }
-    return { ...task, gainPercent };
+  const health = data.health || {};
+  const totalWeight = Math.max(0, Number(health.totalWeight || 0));
+
+  const taskWeight = minutes => {
+    const value = Math.max(0, Number(minutes || 0));
+
+    if (value <= 5) return 0.5;
+    if (value <= 15) return 1;
+    if (value <= 30) return 1.5;
+
+    return 2;
   };
+
+  const routineRemainingWeight = routine => {
+    const tasks = (routine.tasks || [])
+      .filter(task => task.status !== "missing")
+      .map(task => ({
+        done: !!task.done,
+        rawWeight: taskWeight(task.minutes)
+      }));
+
+    const rawTotal = tasks.reduce((sum, task) => sum + task.rawWeight, 0);
+    if (rawTotal <= 0) return 0;
+
+    const cappedTotal = Math.min(4, rawTotal);
+    const scale = cappedTotal / rawTotal;
+
+    return tasks
+      .filter(task => !task.done)
+      .reduce((sum, task) => sum + task.rawWeight * scale, 0);
+  };
+
+  const toGainPercent = weight => {
+    if (totalWeight <= 0 || weight <= 0) return 0;
+    return Math.round((weight / totalWeight) * 1000) / 10;
+  };
+
+  const addTaskGain = task => {
+    const isCurrentlyDue = ["critical", "overdue", "today"].includes(task.status);
+
+    return {
+      ...task,
+      gainPercent: isCurrentlyDue
+        ? toGainPercent(taskWeight(task.minutes))
+        : 0
+    };
+  };
+
+  const addRoutineGain = routine => {
+    const isCurrentlyDue = ["critical", "overdue", "today"].includes(routine.status);
+
+    return {
+      ...routine,
+      gainPercent: isCurrentlyDue
+        ? toGainPercent(routineRemainingWeight(routine))
+        : 0
+    };
+  };
+
   return {
     ...data,
-    today: (data.today || []).map(addGain),
-    week: (data.week || []).map(addGain),
-    quick: (data.quick || []).map(group => ({ ...group, tasks: (group.tasks || []).map(addGain) })),
+    today: (data.today || []).map(addTaskGain),
+    week: (data.week || []).map(addTaskGain),
+    quick: (data.quick || []).map(group => ({
+      ...group,
+      tasks: (group.tasks || []).map(addTaskGain)
+    })),
     projects: data.projects || [],
-    routines: data.routines || [],
+    routines: (data.routines || []).map(addRoutineGain),
     completedRoutinesToday: data.completedRoutinesToday || []
   };
 }
@@ -179,6 +230,11 @@ function render() {
     html = renderHomeHealth();
   }
 
+  if (state.tab === "houseiq") {
+    title.textContent = "House IQ";
+    html = renderHouseIQ();
+  }
+
   if (state.tab === "projects") {
     title.textContent = "Projects";
     html = renderProjects();
@@ -190,6 +246,12 @@ function render() {
   }
 
   content.innerHTML = html + renderCompletionModal();
+}
+
+function openHouseIQ() {
+  state.tab = "houseiq";
+  state.selectedZone = null;
+  render();
 }
 
 function renderLoading() {
@@ -250,19 +312,47 @@ function renderToday() {
   const completed = state.data.completedToday || [];
   const completedRoutines = state.data.completedRoutinesToday || [];
   const currentMinutes = currentItems.reduce((sum, item) => sum + Number(item.minutes || 0), 0);
-  const health = state.data.health?.overall ?? 100;
+  const health = state.data.health || {};
+  const healthScore = Number(health.overall ?? 100);
+  const houseIQ = state.data.houseIQ || {};
+  const houseIQScore = Number(houseIQ.score ?? 80);
+  const houseIQLabel = houseIQ.label || "Building rhythm";
 
   let html = `
-    <div class="health-card">
-      <div>Home Health</div>
-      <div class="health-percent">${health}%</div>
-      <div class="health-detail">${currentItems.length} current items • ${currentMinutes} minutes</div>
-      ${state.oneThingMode ? "" : `
-        <button class="complete-btn" onclick="startWorking()">View All Tasks</button>
-        <button class="complete-btn" onclick="doOneThing()">Do One Thing</button>
-      `}
-      <button class="sign-out-btn" onclick="signOut()">Sign Out</button>
+    <div class="today-score-grid">
+      <div class="health-card today-health-card">
+        <div class="house-iq-eyebrow">Home Health</div>
+        <div class="health-percent">${healthScore}%</div>
+        <div class="health-detail">
+          ${formatHealthWeight(health.completedWeight)} of
+          ${formatHealthWeight(health.totalWeight)} current effort complete
+        </div>
+        <div class="health-detail">
+          ${Number(health.individualDue || 0)} individual tasks remaining •
+          ${Number(health.routineDue || 0)} routines in progress or remaining
+        </div>
+      </div>
+
+      <div class="health-card house-iq-summary-card">
+        <div class="house-iq-eyebrow">House IQ</div>
+        <div class="health-percent">${houseIQScore}%</div>
+        <div class="house-iq-label">${houseIQLabel}</div>
+        <div class="health-detail">
+          ${Number(houseIQ.history?.onTimeRecords || 0)} of
+          ${Number(houseIQ.history?.totalRecords || 0)} recent completions on time
+        </div>
+        <button class="secondary-btn" onclick="openHouseIQ()">View House IQ</button>
+      </div>
     </div>
+
+    <div class="today-action-panel">
+      ${state.oneThingMode ? "" : `
+        <button class="complete-btn today-action-btn" onclick="startWorking()">View All Tasks</button>
+        <button class="complete-btn today-action-btn" onclick="doOneThing()">Do One Thing</button>
+      `}
+      <button class="sign-out-btn today-sign-out-btn" onclick="signOut()">Sign Out</button>
+    </div>
+
     ${renderWeeklyMomentumCard()}
   `;
 
@@ -402,7 +492,9 @@ function workItemCard(item) {
 function todayRoutineCard(routine) {
   const statusLabel = getRoutineStatusLabel(routine.status);
   const remainingTasks = (routine.tasks || []).filter(task => !task.done && task.status !== "missing");
-  const taskList = (routine.tasks || []).map(task => todayRoutineTaskLine(task)).join("");
+  const taskList = (routine.tasks || [])
+    .map(task => todayRoutineTaskLine(task, routine.status))
+    .join("");
   const remainingMinutes = remainingTasks.reduce((sum, task) => sum + Number(task.minutes || 0), 0);
   const minutes = remainingMinutes || Number(routine.totalMinutes || 0);
 
@@ -413,6 +505,9 @@ function todayRoutineCard(routine) {
       <div class="routine-detail">Occurrence ${routine.currentStep} of ${routine.totalSteps} • ${routine.doneCount || 0} done • ${routine.remainingCount || 0} remaining</div>
       <div class="routine-progress-wrap"><div class="routine-progress-bar" style="width:${Math.min(100, Math.max(0, Number(routine.progressPercent || 0)))}%"></div></div>
       <div class="routine-inline-list">${taskList}</div>
+      ${Number(routine.gainPercent || 0) > 0
+        ? `<div class="task-gain">🏡 ${formatGain(routine.gainPercent)} Home Health</div>`
+        : ""}
       <button class="complete-btn" onclick="event.stopPropagation(); completeFullRoutine('${escapeQuotes(routine.routineId)}')">
         ${Number(routine.doneCount || 0) > 0 ? "Complete Remaining Routine" : "Complete Full Routine"}
       </button>
@@ -420,17 +515,22 @@ function todayRoutineCard(routine) {
   `;
 }
 
-function todayRoutineTaskLine(task) {
-  const rowClass = task.done ? "done" : task.status;
-  const label = task.done ? "Done" : getTaskStatusLabel(task.status);
+function todayRoutineTaskLine(task, routineStatus) {
+  const isMissing = task.status === "missing";
+  const rowClass = task.done ? "done" : (isMissing ? "missing" : routineStatus);
+  const detail = isMissing
+    ? `${Number(task.minutes || 0)} min • Missing task`
+    : `${Number(task.minutes || 0)} min`;
 
   return `
     <div class="today-routine-task-line ${rowClass}">
       <div>
         <strong>${task.taskOrder}. ${task.task}</strong>
-        <span>${task.minutes} min • ${label}</span>
+        <span>${detail}</span>
       </div>
-      ${task.status === "missing" || task.done ? "" : `<button class="small-complete-btn" onclick="event.stopPropagation(); openCompletionPrompt('${escapeQuotes(task.taskId)}')">Complete</button>`}
+      ${isMissing || task.done
+        ? ""
+        : `<button class="small-complete-btn" onclick="event.stopPropagation(); openCompletionPrompt('${escapeQuotes(task.taskId)}')">Complete</button>`}
     </div>
   `;
 }
@@ -999,32 +1099,165 @@ function selectRoutine(id) {
 
 function renderHomeHealth() {
   const health = state.data.health;
-  if (!health) return `<div class="empty">No health data available.</div>`;
+
+  if (!health) {
+    return `<div class="empty">No Home Health data available.</div>`;
+  }
+
   let html = `
-    <div class="health-card">
-      <div>Overall</div>
-      <div class="health-percent">${health.overall}%</div>
-      <div class="health-bar-wrap"><div class="health-bar" style="width:${health.overall}%"></div></div>
+    <div class="health-card home-health-overview-card">
+      <div class="house-iq-eyebrow">Home Health</div>
+      <div class="health-percent">${Number(health.overall ?? 100)}%</div>
+      <div class="health-detail">
+        ${formatHealthWeight(health.completedWeight)} of
+        ${formatHealthWeight(health.totalWeight)} current effort complete
+      </div>
+      <div class="health-detail">
+        ${Number(health.individualDue || 0)} individual tasks remaining •
+        ${Number(health.routineDue || 0)} routines in progress or remaining
+      </div>
     </div>
+
+    <div class="section-title">Health by Zone</div>
   `;
-  health.zones.forEach(zone => {
+
+  (health.zones || []).forEach(zone => {
     const isSelected = state.selectedZone === zone.zone;
     const zoneTasks = getZoneTasks(zone.zone);
+    const zoneRoutines = getZoneRoutines(zone.zone);
     const bestTask = getBestTask(zoneTasks, []);
-    const otherTasks = bestTask ? zoneTasks.filter(task => task.row !== bestTask.row) : zoneTasks;
+    const otherTasks = bestTask
+      ? zoneTasks.filter(task => task.row !== bestTask.row)
+      : zoneTasks;
+
     html += `
       <div class="health-card ${isSelected ? "selected-zone" : ""}" onclick="selectZone('${escapeQuotes(zone.zone)}')">
         <strong>${isSelected ? "▼" : "▶"} ${zone.zone}</strong>
         <div class="health-percent">${zone.percent}%</div>
         <div class="health-bar-wrap"><div class="health-bar" style="width:${zone.percent}%"></div></div>
-        <div class="health-detail">${zone.dueCount} tasks due</div>
+        <div class="health-detail">
+          ${formatHealthWeight(zone.completedWeight)} of
+          ${formatHealthWeight(zone.totalWeight)} current effort complete
+        </div>
+        <div class="health-detail">
+          ${Number(zone.individualDueCount || 0)} tasks remaining •
+          ${Number(zone.routineDueCount || 0)} routines in progress or remaining
+        </div>
         <div class="zone-task-list ${isSelected ? "expanded" : ""}">
-          ${isSelected ? renderExpandedZone(bestTask, otherTasks) : ""}
+          ${isSelected ? renderExpandedHealthZone(zoneRoutines, bestTask, otherTasks) : ""}
         </div>
       </div>
     `;
   });
+
   return html;
+}
+
+function renderExpandedHealthZone(routines, bestTask, otherTasks) {
+  const routineList = routines || [];
+  const remainingTasks = otherTasks || [];
+  let html = "";
+
+  if (routineList.length > 0) {
+    html += `<div class="subsection-title">Routines Due</div>`;
+    routineList.forEach(routine => html += todayRoutineCard(routine));
+  }
+
+  if (bestTask) {
+    html += `<div class="biggest-card"><div class="biggest-label">⭐ Biggest Individual Improvement</div>${taskCard(bestTask)}</div>`;
+  }
+
+  if (remainingTasks.length > 0) {
+    html += `<div class="subsection-title">Other Individual Tasks</div><div class="while-here-list">`;
+    remainingTasks.forEach(task => html += taskCard(task));
+    html += `</div>`;
+  }
+
+  if (routineList.length === 0 && !bestTask && remainingTasks.length === 0) {
+    return `<div class="empty">No work currently due here.</div>`;
+  }
+
+  return html;
+}
+
+function renderHouseIQ() {
+  const houseIQ = state.data.houseIQ;
+
+  if (!houseIQ) {
+    return `<div class="empty">No House IQ data available.</div>`;
+  }
+
+  const current = houseIQ.components?.currentControl || {};
+  const individual = houseIQ.components?.individualTimeliness || {};
+  const routine = houseIQ.components?.routineRhythm || {};
+  const overdueNow =
+    Number(houseIQ.current?.overdueTasks || 0) +
+    Number(houseIQ.current?.overdueRoutines || 0);
+
+  return `
+    <div class="house-iq-card">
+      <div class="house-iq-header">
+        <div>
+          <div class="house-iq-eyebrow">House IQ</div>
+          <div class="house-iq-label">${houseIQ.label || "Building rhythm"}</div>
+        </div>
+        <div class="house-iq-score">${Number(houseIQ.score || 0)}%</div>
+      </div>
+      <div class="house-iq-main-bar"><div style="width:${Math.min(100, Math.max(0, Number(houseIQ.score || 0)))}%"></div></div>
+      <div class="house-iq-explainer">
+        Based on current overdue work and the last ${houseIQ.windowDays || 28} days of individual task and routine completions.
+        Projects are excluded.
+      </div>
+      <div class="house-iq-current">
+        ${overdueNow} overdue now •
+        ${Number(houseIQ.history?.onTimeRecords || 0)} of
+        ${Number(houseIQ.history?.totalRecords || 0)} recent completions on time
+      </div>
+    </div>
+
+    ${renderHouseIQComponent(
+      "Current Control",
+      current.score,
+      "40%",
+      `${Number(current.overdueTasks || 0)} overdue tasks • ${Number(current.overdueRoutines || 0)} overdue routines`
+    )}
+
+    ${renderHouseIQComponent(
+      "Individual Timeliness",
+      individual.score,
+      "30%",
+      individual.records
+        ? `${Number(individual.onTime || 0)} of ${Number(individual.records || 0)} completed on time`
+        : "Building data from future completions"
+    )}
+
+    ${renderHouseIQComponent(
+      "Routine Rhythm",
+      routine.score,
+      "30%",
+      routine.records
+        ? `${Number(routine.onTime || 0)} of ${Number(routine.records || 0)} completed on time`
+        : "Building data from future routine completions"
+    )}
+  `;
+}
+
+function renderHouseIQComponent(title, scoreValue, weightLabel, detail) {
+  const score = Math.min(100, Math.max(0, Number(scoreValue || 0)));
+
+  return `
+    <div class="house-iq-component">
+      <div class="house-iq-component-header">
+        <div>
+          <strong>${title}</strong>
+          <span>${weightLabel} of House IQ</span>
+        </div>
+        <div class="house-iq-component-score">${score}%</div>
+      </div>
+      <div class="house-iq-component-bar"><div style="width:${score}%"></div></div>
+      <div class="house-iq-component-detail">${detail}</div>
+    </div>
+  `;
 }
 
 function renderExpandedZone(bestTask, otherTasks) {
@@ -1492,7 +1725,14 @@ function formatCost(value) {
 }
 
 function getZoneTasks(zoneName) {
-  return [...(state.data.today || []), ...(state.data.week || [])].filter(task => task.zone === zoneName);
+  return (state.data.today || []).filter(task => task.zone === zoneName);
+}
+
+function getZoneRoutines(zoneName) {
+  return (state.data.routines || []).filter(routine =>
+    routine.zone === zoneName &&
+    ["critical", "overdue", "today"].includes(routine.status)
+  );
 }
 
 function taskCard(task) {
@@ -1501,16 +1741,28 @@ function taskCard(task) {
       <div class="task-title">${task.task}</div>
       <div class="task-meta">${task.zone} • ${task.area} • ${task.minutes} min • Due ${formatDisplayDate(task.due)}</div>
       <div class="task-notes">${task.notes || ""}</div>
-      <div class="task-gain">🏡 ${formatGain(task.gainPercent)} Home Health</div>
+      ${Number(task.gainPercent || 0) > 0
+        ? `<div class="task-gain">🏡 ${formatGain(task.gainPercent)} Home Health</div>`
+        : ""}
       <button class="complete-btn" onclick="event.stopPropagation(); openCompletionPrompt('${escapeQuotes(task.taskId)}')">Complete</button>
     </div>
   `;
 }
 
+function formatHealthWeight(value) {
+  const number = Number(value || 0);
+
+  if (Number.isInteger(number)) return String(number);
+
+  return String(Math.round(number * 100) / 100);
+}
+
 function formatGain(gainPercent) {
   const gain = Number(gainPercent || 0);
   if (gain <= 0) return "+0%";
-  return `+${gain}%`;
+
+  const rounded = Math.round(gain * 10) / 10;
+  return `+${rounded}%`;
 }
 
 function completedCard(task) {
