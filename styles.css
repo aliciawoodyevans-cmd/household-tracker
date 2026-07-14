@@ -888,7 +888,7 @@ h1 {
 
 .today-score-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -922,11 +922,7 @@ h1 {
   background: #f3f3f3;
 }
 
-@media (min-width: 440px) {
-  .today-score-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
+
 
 
 
@@ -958,3 +954,85 @@ h1 {
 .house-iq-summary-card {
   height: 100%;
 }
+
+
+@media (max-width: 439px) {
+  .today-score-grid {
+    gap: 8px;
+  }
+
+  .today-score-grid .health-card {
+    padding: 12px;
+    border-radius: 16px;
+    min-width: 0;
+  }
+
+  .today-score-grid .house-iq-eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+
+  .today-score-grid .health-percent {
+    font-size: 42px;
+    line-height: 1;
+  }
+
+  .today-score-grid .house-iq-label {
+    font-size: 15px;
+  }
+
+  .today-score-grid .health-detail {
+    font-size: 10px;
+    line-height: 1.25;
+  }
+
+  .today-score-grid .secondary-btn {
+    padding: 9px 6px;
+    font-size: 12px;
+  }
+
+  .today-action-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    max-width: none;
+  }
+
+  .today-action-panel .today-action-btn {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    padding: 12px 8px;
+    font-size: 15px;
+  }
+
+  .today-action-panel .today-sign-out-btn {
+    grid-column: 1 / -1;
+    width: 120px;
+    max-width: 120px;
+    justify-self: center;
+    margin: 0;
+  }
+}
+
+
+@media (max-width: 439px) {
+  .modal-overlay {
+    align-items: flex-start;
+    overflow-y: auto;
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+  }
+
+  .completion-modal {
+    margin-top: 8vh;
+  }
+
+  .minutes-input {
+    font-size: 20px;
+    touch-action: manipulation;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+

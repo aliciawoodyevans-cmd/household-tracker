@@ -1815,7 +1815,19 @@ function renderCompletionModal() {
         <div class="modal-eyebrow">Complete Task</div>
         <div class="modal-title">${task.task || "Task"}</div>
         <div class="modal-question">How many minutes did this take?</div>
-        <input id="actual-minutes-input" class="minutes-input" type="number" min="1" max="240" step="1" inputmode="numeric" placeholder="Optional" />
+        <input
+          id="actual-minutes-input"
+          class="minutes-input"
+          type="text"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          enterkeyhint="done"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
+          placeholder="Optional"
+          onclick="focusMinutesInput()"
+        />
         ${state.completionError ? `<div class="modal-error">${state.completionError}</div>` : ""}
         <div class="modal-actions">
           <button class="secondary-btn modal-btn" onclick="skipCompletionMinutes()">Skip</button>
@@ -1832,10 +1844,28 @@ function openCompletionPrompt(taskId) {
   state.completionError = "";
   render();
 
-  setTimeout(() => {
+  focusMinutesInput();
+
+  requestAnimationFrame(() => {
     const input = document.getElementById("actual-minutes-input");
-    if (input) input.focus();
-  }, 50);
+    if (input && document.activeElement !== input) {
+      input.focus({ preventScroll: true });
+    }
+  });
+}
+
+function focusMinutesInput() {
+  const input = document.getElementById("actual-minutes-input");
+  if (!input) return;
+
+  input.focus({ preventScroll: true });
+
+  try {
+    const end = String(input.value || "").length;
+    input.setSelectionRange(end, end);
+  } catch (error) {
+    // Selection ranges are optional on some mobile browsers.
+  }
 }
 
 function closeCompletionPrompt() {
