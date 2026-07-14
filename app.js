@@ -58,14 +58,26 @@ function renderLogin(message = "") {
     <div class="login-card">
       <div class="login-title">Welcome to HouseFlow</div>
       <div class="login-subtitle">Enter your HouseFlow password to continue on this device.</div>
-      <input id="password-input" class="password-input" type="password" placeholder="Password" autocomplete="current-password" />
+      <label class="password-field-wrap" for="password-input">
+        <span class="sr-only">Password</span>
+        <input
+          id="password-input"
+          class="password-input"
+          type="password"
+          inputmode="text"
+          placeholder="Password"
+          autocomplete="current-password"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+        />
+      </label>
       <button class="complete-btn" onclick="attemptLogin()">Sign In</button>
       ${message ? `<div class="login-error">${message}</div>` : ""}
     </div>
   `;
   const input = document.getElementById("password-input");
   if (input) {
-    input.focus();
     input.addEventListener("keydown", event => {
       if (event.key === "Enter") attemptLogin();
     });
