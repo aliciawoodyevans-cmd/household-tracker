@@ -1036,3 +1036,41 @@ h1 {
   }
 }
 
+
+
+/* v1.2.3 iPhone cache reset and mobile layout safeguard */
+.today-score-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+@media (max-width: 439px) {
+  .today-score-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .today-action-panel {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .today-action-panel .today-action-btn {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+
+  .today-action-panel .today-sign-out-btn {
+    grid-column: 1 / -1 !important;
+    justify-self: center !important;
+    width: 120px !important;
+  }
+
+  .minutes-input {
+    pointer-events: auto !important;
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    font-size: 20px !important;
+  }
+}

@@ -1,3 +1,4 @@
+const FRONTEND_VERSION = "v1.2.3";
 let state = {
   tab: "today",
   data: null,
@@ -1818,7 +1819,7 @@ function renderCompletionModal() {
         <input
           id="actual-minutes-input"
           class="minutes-input"
-          type="text"
+          type="tel"
           inputmode="numeric"
           pattern="[0-9]*"
           enterkeyhint="done"
@@ -1826,7 +1827,6 @@ function renderCompletionModal() {
           autocorrect="off"
           spellcheck="false"
           placeholder="Optional"
-          onclick="focusMinutesInput()"
         />
         ${state.completionError ? `<div class="modal-error">${state.completionError}</div>` : ""}
         <div class="modal-actions">
@@ -1843,29 +1843,6 @@ function openCompletionPrompt(taskId) {
   state.pendingCompletionTask = task || { taskId: taskId, task: "Task" };
   state.completionError = "";
   render();
-
-  focusMinutesInput();
-
-  requestAnimationFrame(() => {
-    const input = document.getElementById("actual-minutes-input");
-    if (input && document.activeElement !== input) {
-      input.focus({ preventScroll: true });
-    }
-  });
-}
-
-function focusMinutesInput() {
-  const input = document.getElementById("actual-minutes-input");
-  if (!input) return;
-
-  input.focus({ preventScroll: true });
-
-  try {
-    const end = String(input.value || "").length;
-    input.setSelectionRange(end, end);
-  } catch (error) {
-    // Selection ranges are optional on some mobile browsers.
-  }
 }
 
 function closeCompletionPrompt() {
