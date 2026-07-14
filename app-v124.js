@@ -1819,15 +1819,27 @@ function renderCompletionModal() {
         <input
           id="actual-minutes-input"
           class="minutes-input"
-          type="tel"
-          inputmode="numeric"
-          pattern="[0-9]*"
-          enterkeyhint="done"
-          autocomplete="off"
-          autocorrect="off"
-          spellcheck="false"
+          type="text"
+          inputmode="none"
+          readonly
+          aria-label="Actual minutes"
           placeholder="Optional"
         />
+
+        <div class="minutes-keypad" aria-label="Minutes keypad">
+          <button type="button" onclick="appendMinuteDigit('1')">1</button>
+          <button type="button" onclick="appendMinuteDigit('2')">2</button>
+          <button type="button" onclick="appendMinuteDigit('3')">3</button>
+          <button type="button" onclick="appendMinuteDigit('4')">4</button>
+          <button type="button" onclick="appendMinuteDigit('5')">5</button>
+          <button type="button" onclick="appendMinuteDigit('6')">6</button>
+          <button type="button" onclick="appendMinuteDigit('7')">7</button>
+          <button type="button" onclick="appendMinuteDigit('8')">8</button>
+          <button type="button" onclick="appendMinuteDigit('9')">9</button>
+          <button type="button" class="minutes-keypad-clear" onclick="clearMinuteValue()">Clear</button>
+          <button type="button" onclick="appendMinuteDigit('0')">0</button>
+          <button type="button" class="minutes-keypad-backspace" onclick="backspaceMinuteDigit()">⌫</button>
+        </div>
         ${state.completionError ? `<div class="modal-error">${state.completionError}</div>` : ""}
         <div class="modal-actions">
           <button class="secondary-btn modal-btn" onclick="skipCompletionMinutes()">Skip</button>
@@ -1843,6 +1855,36 @@ function openCompletionPrompt(taskId) {
   state.pendingCompletionTask = task || { taskId: taskId, task: "Task" };
   state.completionError = "";
   render();
+}
+
+function appendMinuteDigit(digit) {
+  const input = document.getElementById("actual-minutes-input");
+  if (!input) return;
+
+  const current = String(input.value || "");
+  const next = (current + String(digit || "")).replace(/^0+(?=\d)/, "");
+
+  if (next.length > 3) return;
+  if (Number(next) > 240) return;
+
+  input.value = next;
+  state.completionError = "";
+}
+
+function backspaceMinuteDigit() {
+  const input = document.getElementById("actual-minutes-input");
+  if (!input) return;
+
+  input.value = String(input.value || "").slice(0, -1);
+  state.completionError = "";
+}
+
+function clearMinuteValue() {
+  const input = document.getElementById("actual-minutes-input");
+  if (!input) return;
+
+  input.value = "";
+  state.completionError = "";
 }
 
 function closeCompletionPrompt() {
