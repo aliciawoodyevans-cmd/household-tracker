@@ -19,7 +19,11 @@ let state = {
   localCompleted: [],
   pendingCompletionTask: null,
   completionError: "",
-  isAuthenticated: false
+  isAuthenticated: false,
+  houseIQRange: 30,
+  upcomingExpanded: false,
+  completedExpanded: false,
+  selectedForecastDate: null
 };
 
 const AUTH_KEY = "houseflow_authenticated_v1";
@@ -32,6 +36,7 @@ document.querySelectorAll(".nav-btn").forEach(button => {
     state.selectedZone = null;
     state.selectedProject = null;
     state.selectedRoutine = null;
+    state.selectedForecastDate = null;
     state.editingProjectRow = null;
     state.showAddProject = false;
     state.projectError = "";
@@ -53,6 +58,8 @@ function initApp() {
 
 function renderLogin(message = "") {
   document.getElementById("page-title").textContent = "Sign In";
+  const systemButton = document.getElementById("system-button");
+  if (systemButton) systemButton.hidden = true;
   document.querySelectorAll(".nav-btn").forEach(button => button.classList.remove("active"));
   document.getElementById("app-content").innerHTML = `
     <div class="login-card">
@@ -214,8 +221,13 @@ function render() {
   if (state.loading) return renderLoading();
   if (state.error) return renderError(state.error);
 
+  const systemButton = document.getElementById("system-button");
+  if (systemButton) systemButton.hidden = false;
+
+  const primaryTab = getPrimaryTabForState();
+
   document.querySelectorAll(".nav-btn").forEach(button => {
-    button.classList.toggle("active", button.dataset.tab === state.tab);
+    button.classList.toggle("active", button.dataset.tab === primaryTab);
   });
 
   const title = document.getElementById("page-title");
@@ -232,19 +244,9 @@ function render() {
     html = renderQuickPicks();
   }
 
-  if (state.tab === "routines") {
-    title.textContent = "Routines";
-    html = renderRoutines();
-  }
-
-  if (state.tab === "health") {
-    title.textContent = "Home Health";
-    html = renderHomeHealth();
-  }
-
-  if (state.tab === "houseiq") {
-    title.textContent = "House IQ";
-    html = renderHouseIQ();
+  if (state.tab === "forecast") {
+    title.textContent = "Forecast";
+    html = renderForecast();
   }
 
   if (state.tab === "projects") {
@@ -252,18 +254,124 @@ function render() {
     html = renderProjects();
   }
 
+  if (state.tab === "health") {
+    title.textContent = "Home Health";
+    html = renderBackButton("Today", "backToToday()") + renderHomeHealth();
+  }
+
+  if (state.tab === "houseiq") {
+    title.textContent = "House IQ";
+    html = renderBackButton("Today", "backToToday()") + renderHouseIQ();
+  }
+
+  if (state.tab === "system") {
+    title.textContent = "System";
+    html = renderSystem();
+  }
+
+  if (state.tab === "routines") {
+    title.textContent = "All Routines";
+    html = renderBackButton("System", "backToSystem()") + renderRoutines();
+  }
+
   if (state.tab === "diagnostics") {
     title.textContent = "Diagnostics";
-    html = renderDiagnostics();
+    html = renderBackButton("System", "backToSystem()") + renderDiagnostics();
   }
 
   content.innerHTML = html + renderCompletionModal();
+}
+
+function getPrimaryTabForState() {
+  if (["health", "houseiq", "system", "routines", "diagnostics"].includes(state.tab)) {
+    return "today";
+  }
+
+  return state.tab;
+}
+
+function openHomeHealth() {
+  state.tab = "health";
+  state.selectedZone = null;
+  render();
 }
 
 function openHouseIQ() {
   state.tab = "houseiq";
   state.selectedZone = null;
   render();
+}
+
+function openSystem() {
+  if (!state.isAuthenticated) return;
+  state.tab = "system";
+  state.selectedRoutine = null;
+  render();
+}
+
+function openAllRoutines() {
+  state.tab = "routines";
+  state.selectedRoutine = null;
+  render();
+}
+
+function openDiagnostics() {
+  state.tab = "diagnostics";
+  render();
+}
+
+function backToToday() {
+  state.tab = "today";
+  state.selectedZone = null;
+  render();
+}
+
+function backToSystem() {
+  state.tab = "system";
+  state.selectedRoutine = null;
+  render();
+}
+
+function renderBackButton(label, action) {
+  return `
+    <button class="page-back-button" onclick="${action}">
+      ← Back to ${label}
+    </button>
+  `;
+}
+
+function renderSystem() {
+  const diagnostics = state.data.diagnostics || {};
+
+  return `
+    ${renderBackButton("Today", "backToToday()")}
+
+    <div class="system-card">
+      <div class="system-card-title">HouseFlow Tools</div>
+      <button class="system-link-button" onclick="openAllRoutines()">
+        <span>All Routines</span>
+        <strong>›</strong>
+      </button>
+      <button class="system-link-button" onclick="openDiagnostics()">
+        <span>Diagnostics</span>
+        <strong>›</strong>
+      </button>
+    </div>
+
+    <div class="system-card">
+      <div class="system-card-title">System Information</div>
+      <div class="system-info-row">
+        <span>App version</span>
+        <strong>${diagnostics.appVersion || "Unknown"}</strong>
+      </div>
+      <div class="system-info-row">
+        <span>Last sync</span>
+        <strong>${diagnostics.lastSync || "Unknown"}</strong>
+      </div>
+    </div>
+
+    <button class="system-sign-out-button" onclick="signOut()">Sign Out</button>
+  `;
 }
 
 function renderLoading() {
@@ -314,16 +422,55 @@ function renderCurrentWorkGroup(title, tasks) {
   return html;
 }
 
+function formatRemainingTaskCount(count) {
+  const value = Number(count || 0);
+  return `${value} ${value === 1 ? "task" : "tasks"} remaining`;
+}
+
+function formatTaskBreakdown(individualCount, routineTaskCount) {
+  const individual = Number(individualCount || 0);
+  const routine = Number(routineTaskCount || 0);
+
+  const individualLabel =
+    `${individual} individual ${individual === 1 ? "task" : "tasks"}`;
+  const routineLabel =
+    `${routine} routine ${routine === 1 ? "task" : "tasks"}`;
+
+  return `${individualLabel} • ${routineLabel}`;
+}
+
 function renderToday() {
   const individualToday = state.data.today || [];
   const individualWeek = state.data.week || [];
   const routines = state.data.routines || [];
   const workItems = getTodayWorkItems(individualToday, individualWeek, routines);
-  const currentItems = workItems.filter(item => ["critical", "overdue", "today"].includes(item.status));
-  const weekItems = workItems.filter(item => item.status === "week");
+  const currentItems = workItems.filter(item =>
+    ["critical", "overdue", "today"].includes(item.status)
+  );
+  const upcomingItems = workItems.filter(item => {
+    const days = getDaysFromToday(item.due);
+    return days >= 1 && days <= 2;
+  });
   const completed = state.data.completedToday || [];
   const completedRoutines = state.data.completedRoutinesToday || [];
-  const currentMinutes = currentItems.reduce((sum, item) => sum + Number(item.minutes || 0), 0);
+  const currentMinutes = currentItems.reduce(
+    (sum, item) => sum + Number(item.minutes || 0),
+    0
+  );
+  const remainingIndividualTasks = currentItems.filter(
+    item => item.kind === "task"
+  ).length;
+  const remainingRoutineTasks = currentItems
+    .filter(item => item.kind === "routine")
+    .reduce((sum, item) => {
+      const unfinishedTasks = (item.routine?.tasks || []).filter(
+        task => !task.done && task.status !== "missing"
+      ).length;
+
+      return sum + unfinishedTasks;
+    }, 0);
+  const totalRemainingTasks =
+    remainingIndividualTasks + remainingRoutineTasks;
   const health = state.data.health || {};
   const healthScore = Number(health.overall ?? 100);
   const houseIQ = state.data.houseIQ || {};
@@ -335,14 +482,16 @@ function renderToday() {
       <div class="health-card today-health-card">
         <div class="house-iq-eyebrow">Home Health</div>
         <div class="health-percent">${healthScore}%</div>
-        <div class="health-detail">
-          ${formatHealthWeight(health.completedWeight)} of
-          ${formatHealthWeight(health.totalWeight)} current effort complete
+        <div class="health-detail health-task-total">
+          ${formatRemainingTaskCount(totalRemainingTasks)}
         </div>
         <div class="health-detail">
-          ${Number(health.individualDue || 0)} individual tasks remaining •
-          ${Number(health.routineDue || 0)} routines in progress or remaining
+          ${formatTaskBreakdown(
+            remainingIndividualTasks,
+            remainingRoutineTasks
+          )}
         </div>
+        <button class="secondary-btn" onclick="openHomeHealth()">View Home Health</button>
       </div>
 
       <div class="health-card house-iq-summary-card">
@@ -362,7 +511,6 @@ function renderToday() {
         <button class="complete-btn today-action-btn" onclick="startWorking()">View All Tasks</button>
         <button class="complete-btn today-action-btn" onclick="doOneThing()">Do One Thing</button>
       `}
-      <button class="sign-out-btn today-sign-out-btn" onclick="signOut()">Sign Out</button>
     </div>
 
     ${renderWeeklyMomentumCard()}
@@ -373,31 +521,149 @@ function renderToday() {
   } else if (state.showWork) {
     html += `
       <div class="summary-card">
-        ${summaryItem("Critical", countWorkItemsByStatus(workItems, "critical"))}
-        ${summaryItem("Overdue", countWorkItemsByStatus(workItems, "overdue"))}
-        ${summaryItem("Due Today", countWorkItemsByStatus(workItems, "today"))}
-        ${summaryItem("This Week", countWorkItemsByStatus(workItems, "week"))}
+        ${summaryItem("Critical", countWorkItemsByStatus(currentItems, "critical"))}
+        ${summaryItem("Overdue", countWorkItemsByStatus(currentItems, "overdue"))}
+        ${summaryItem("Due Today", countWorkItemsByStatus(currentItems, "today"))}
+        ${summaryItem("Upcoming", upcomingItems.length)}
       </div>
     `;
 
-    if (workItems.length === 0) {
-      html += `<div class="empty">No current or upcoming work. 🎉</div>`;
-    } else {
-      html += `<div class="section-title">Work List</div>`;
-      workItems.forEach(item => html += workItemCard(item));
+    html += renderWorkItemGroup(
+      "Critical",
+      currentItems.filter(item => item.status === "critical")
+    );
+    html += renderWorkItemGroup(
+      "Overdue",
+      currentItems.filter(item => item.status === "overdue")
+    );
+    html += renderWorkItemGroup(
+      "Due Today",
+      currentItems.filter(item => item.status === "today")
+    );
+
+    if (currentItems.length === 0) {
+      html += `<div class="empty">No work currently due. 🎉</div>`;
     }
   }
 
-  if (completedRoutines.length > 0) {
-    html += `<div class="section-title">Completed Routines Today</div>`;
-    completedRoutines.forEach(routine => html += completedRoutineCard(routine));
+  if (!state.oneThingMode) {
+    html += renderUpcomingAccordion(upcomingItems);
   }
 
-  if (completed.length > 0) {
-    html += `<div class="section-title">Completed Tasks Today</div>`;
-    completed.forEach(task => html += completedCard(task));
+  html += renderCompletedAccordion(completedRoutines, completed);
+
+  return html;
+}
+
+function renderWorkItemGroup(title, items) {
+  if (!items || items.length === 0) return "";
+
+  let html = `<div class="section-title">${title} (${items.length})</div>`;
+  items.slice().sort(sortTodayWorkItems).forEach(item => {
+    html += workItemCard(item);
+  });
+
+  return html;
+}
+
+function toggleUpcomingAccordion() {
+  state.upcomingExpanded = !state.upcomingExpanded;
+  render();
+}
+
+function renderUpcomingAccordion(items) {
+  const upcomingItems = items || [];
+  const totalMinutes = upcomingItems.reduce(
+    (sum, item) => sum + Number(item.minutes || 0),
+    0
+  );
+
+  let html = `
+    <div class="today-accordion-card">
+      <button class="today-accordion-header" onclick="toggleUpcomingAccordion()">
+        <div>
+          <strong>${state.upcomingExpanded ? "▼" : "▶"} Upcoming (${upcomingItems.length})</strong>
+          <span>Next 2 days${upcomingItems.length ? ` • ${totalMinutes} min` : ""}</span>
+        </div>
+      </button>
+  `;
+
+  if (state.upcomingExpanded) {
+    if (upcomingItems.length === 0) {
+      html += `<div class="accordion-empty">Nothing is due during the next two days.</div>`;
+    } else {
+      [1, 2].forEach(daysAhead => {
+        const dayItems = upcomingItems.filter(
+          item => getDaysFromToday(item.due) === daysAhead
+        );
+
+        if (dayItems.length === 0) return;
+
+        const label = daysAhead === 1 ? "Tomorrow" : "Day After Tomorrow";
+        const minutes = dayItems.reduce(
+          (sum, item) => sum + Number(item.minutes || 0),
+          0
+        );
+
+        html += `
+          <div class="upcoming-day-header">
+            <strong>${label}</strong>
+            <span>${dayItems.length} items • ${minutes} min</span>
+          </div>
+        `;
+
+        dayItems.slice().sort(sortTodayWorkItems).forEach(item => {
+          html += workItemCard(item);
+        });
+      });
+    }
   }
 
+  html += `</div>`;
+  return html;
+}
+
+function toggleCompletedAccordion() {
+  state.completedExpanded = !state.completedExpanded;
+  render();
+}
+
+function renderCompletedAccordion(completedRoutines, completedTasks) {
+  const routines = completedRoutines || [];
+  const tasks = completedTasks || [];
+  const total = routines.length + tasks.length;
+
+  let html = `
+    <div class="today-accordion-card completed-accordion">
+      <button class="today-accordion-header" onclick="toggleCompletedAccordion()">
+        <div>
+          <strong>${state.completedExpanded ? "▼" : "▶"} Completed Today (${total})</strong>
+          <span>${routines.length} routines • ${tasks.length} individual tasks</span>
+        </div>
+      </button>
+  `;
+
+  if (state.completedExpanded) {
+    if (total === 0) {
+      html += `<div class="accordion-empty">Nothing completed yet today.</div>`;
+    } else {
+      if (routines.length > 0) {
+        html += `<div class="subsection-title accordion-subsection">Completed Routines</div>`;
+        routines.forEach(routine => {
+          html += completedRoutineCard(routine);
+        });
+      }
+
+      if (tasks.length > 0) {
+        html += `<div class="subsection-title accordion-subsection">Completed Individual Tasks</div>`;
+        tasks.forEach(task => {
+          html += completedCard(task);
+        });
+      }
+    }
+  }
+
+  html += `</div>`;
   return html;
 }
 
@@ -992,6 +1258,136 @@ function quickPickItemCard(item) {
 }
 
 
+function renderForecast() {
+  const workItems = getTodayWorkItems(
+    state.data.today || [],
+    state.data.week || [],
+    state.data.routines || []
+  ).filter(item => {
+    const days = getDaysFromToday(item.due);
+    return days >= 1 && days <= 7;
+  });
+
+  let html = `
+    <div class="forecast-intro-card">
+      <div class="forecast-intro-title">Next 7 Days</div>
+      <div class="forecast-intro-detail">
+        Upcoming on Today shows only the next two days. Forecast shows the full week.
+      </div>
+    </div>
+  `;
+
+  for (let daysAhead = 1; daysAhead <= 7; daysAhead++) {
+    const date = addClientDays(new Date(), daysAhead);
+    const dateKey = getClientDateKey(date);
+    const dayItems = workItems
+      .filter(item => getDaysFromToday(item.due) === daysAhead)
+      .sort(sortTodayWorkItems);
+    const minutes = dayItems.reduce(
+      (sum, item) => sum + Number(item.minutes || 0),
+      0
+    );
+    const routines = dayItems.filter(item => item.kind === "routine").length;
+    const tasks = dayItems.filter(item => item.kind === "task").length;
+    const isSelected = state.selectedForecastDate === dateKey;
+    const workload = getForecastWorkload(minutes);
+
+    html += `
+      <div class="forecast-day-card ${isSelected ? "selected" : ""}">
+        <button class="forecast-day-header" onclick="toggleForecastDay('${dateKey}')">
+          <div>
+            <strong>${isSelected ? "▼" : "▶"} ${formatForecastDate(date, daysAhead)}</strong>
+            <span>${tasks} tasks • ${routines} routines • ${minutes} min</span>
+          </div>
+          <div class="forecast-workload ${workload.className}">${workload.label}</div>
+        </button>
+        ${isSelected ? renderForecastDayItems(dayItems) : ""}
+      </div>
+    `;
+  }
+
+  return html;
+}
+
+function toggleForecastDay(dateKey) {
+  state.selectedForecastDate =
+    state.selectedForecastDate === dateKey ? null : dateKey;
+  render();
+}
+
+function renderForecastDayItems(items) {
+  if (!items || items.length === 0) {
+    return `<div class="accordion-empty">No scheduled work.</div>`;
+  }
+
+  let html = `<div class="forecast-day-items">`;
+
+  items.forEach(item => {
+    html += workItemCard(item);
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+function getForecastWorkload(minutes) {
+  const value = Number(minutes || 0);
+
+  if (value === 0) {
+    return { label: "Clear", className: "clear" };
+  }
+
+  if (value < 20) {
+    return { label: "Light", className: "light" };
+  }
+
+  if (value <= 45) {
+    return { label: "Moderate", className: "moderate" };
+  }
+
+  return { label: "Heavy", className: "heavy" };
+}
+
+function formatForecastDate(date, daysAhead) {
+  if (daysAhead === 1) return "Tomorrow";
+  if (daysAhead === 2) return "Day After Tomorrow";
+
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric"
+  });
+}
+
+function getDaysFromToday(value) {
+  const timestamp = getSortableDate(value);
+
+  if (!Number.isFinite(timestamp) || timestamp >= new Date(2999, 0, 1).getTime()) {
+    return 999;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.round((timestamp - today.getTime()) / 86400000);
+}
+
+function addClientDays(dateValue, days) {
+  const date = new Date(dateValue);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + Number(days || 0));
+  return date;
+}
+
+function getClientDateKey(dateValue) {
+  const date = new Date(dateValue);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function renderRoutines() {
   const routines = state.data.routines || [];
 
@@ -1097,6 +1493,7 @@ function completeFullRoutine(routineId) {
   callApi("completeRoutine", { routineId })
     .then(data => {
       state.data = addGainPercentages(data);
+      state.completedExpanded = true;
       state.selectedRoutine = routineId;
       state.tab = previousTab;
       render();
@@ -1194,6 +1591,8 @@ function renderExpandedHealthZone(routines, bestTask, otherTasks) {
 
 function renderHouseIQ() {
   const houseIQ = state.data.houseIQ;
+  const trends = state.data.houseIQTrends || {};
+  const snapshots = trends.snapshots || [];
 
   if (!houseIQ) {
     return `<div class="empty">No House IQ data available.</div>`;
@@ -1227,6 +1626,19 @@ function renderHouseIQ() {
       </div>
     </div>
 
+    ${renderHouseIQTrend(trends, snapshots)}
+
+    <div class="house-iq-record-grid">
+      ${renderIQRecord("Best IQ", `${Number(trends.summary?.bestScore || houseIQ.score || 0)}%`, formatTrendDate(trends.summary?.bestDate))}
+      ${renderIQRecord("Current Streak", `${Number(trends.summary?.currentStreak || 0)} days`, "IQ 90 or higher")}
+      ${renderIQRecord("Longest Streak", `${Number(trends.summary?.longestStreak || 0)} days`, "IQ 90 or higher")}
+      ${renderIQRecord("History", `${Number(trends.summary?.snapshotDays || 0)} days`, "Daily snapshots")}
+    </div>
+
+    ${renderHouseIQWeeklySummary(trends.weekly || {})}
+
+    <div class="section-title">Current Score Breakdown</div>
+
     ${renderHouseIQComponent(
       "Current Control",
       current.score,
@@ -1251,6 +1663,164 @@ function renderHouseIQ() {
         ? `${Number(routine.onTime || 0)} of ${Number(routine.records || 0)} completed on time`
         : "Building data from future routine completions"
     )}
+
+    ${renderHouseIQInsights(trends.insights || [])}
+  `;
+}
+
+function setHouseIQRange(days) {
+  state.houseIQRange = Number(days) || 30;
+  render();
+}
+
+function renderHouseIQTrend(trends, snapshots) {
+  const range = Number(state.houseIQRange || 30);
+  const visible = getVisibleIQSnapshots(snapshots, range);
+  const change = Number(trends.summary?.thirtyDayChange || 0);
+  const changeText = change > 0 ? `+${change}` : String(change);
+  const changeClass = change > 0 ? "up" : (change < 0 ? "down" : "steady");
+
+  return `
+    <div class="iq-trend-card">
+      <div class="iq-trend-header">
+        <div>
+          <div class="section-card-title">House IQ Trend</div>
+          <div class="iq-trend-change ${changeClass}">${changeText} over available 30 day history</div>
+        </div>
+        <div class="iq-range-buttons">
+          ${renderIQRangeButton(30, "30D")}
+          ${renderIQRangeButton(90, "90D")}
+          ${renderIQRangeButton(365, "1Y")}
+        </div>
+      </div>
+      ${visible.length >= 2
+        ? renderIQLineChart(visible)
+        : `<div class="iq-history-empty">
+            Today’s snapshot has been saved. The trend line will appear after another day is recorded.
+          </div>`}
+    </div>
+  `;
+}
+
+function renderIQRangeButton(days, label) {
+  return `
+    <button
+      class="iq-range-btn ${Number(state.houseIQRange || 30) === days ? "active" : ""}"
+      onclick="setHouseIQRange(${days})"
+    >${label}</button>
+  `;
+}
+
+function getVisibleIQSnapshots(snapshots, rangeDays) {
+  if (!snapshots || snapshots.length === 0) return [];
+
+  const lastDate = new Date(snapshots[snapshots.length - 1].date + "T12:00:00");
+  const cutoff = new Date(lastDate);
+  cutoff.setDate(cutoff.getDate() - Math.max(1, Number(rangeDays || 30)) + 1);
+
+  return snapshots.filter(snapshot => {
+    const date = new Date(snapshot.date + "T12:00:00");
+    return date >= cutoff;
+  });
+}
+
+function renderIQLineChart(points) {
+  const width = 600;
+  const height = 210;
+  const padLeft = 34;
+  const padRight = 12;
+  const padTop = 14;
+  const padBottom = 28;
+  const chartWidth = width - padLeft - padRight;
+  const chartHeight = height - padTop - padBottom;
+  const minScore = Math.max(0, Math.min(...points.map(point => Number(point.score || 0))) - 5);
+  const maxScore = Math.min(100, Math.max(...points.map(point => Number(point.score || 0))) + 5);
+  const range = Math.max(10, maxScore - minScore);
+
+  const coords = points.map((point, index) => {
+    const x = padLeft + (points.length === 1 ? chartWidth / 2 : index * chartWidth / (points.length - 1));
+    const y = padTop + (maxScore - Number(point.score || 0)) * chartHeight / range;
+    return { x, y, point };
+  });
+
+  const polyline = coords.map(coord => `${coord.x},${coord.y}`).join(" ");
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  const midIndex = Math.floor((coords.length - 1) / 2);
+  const mid = coords[midIndex];
+
+  return `
+    <div class="iq-chart-wrap">
+      <svg class="iq-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="House IQ trend">
+        <line x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${height - padBottom}" class="iq-grid-axis" />
+        <line x1="${padLeft}" y1="${height - padBottom}" x2="${width - padRight}" y2="${height - padBottom}" class="iq-grid-axis" />
+        <line x1="${padLeft}" y1="${padTop + chartHeight / 2}" x2="${width - padRight}" y2="${padTop + chartHeight / 2}" class="iq-grid-line" />
+        <polyline points="${polyline}" class="iq-line" />
+        ${coords.map(coord => `<circle cx="${coord.x}" cy="${coord.y}" r="4" class="iq-point"><title>${coord.point.displayDate}: ${coord.point.score}%</title></circle>`).join("")}
+        <text x="4" y="${padTop + 5}" class="iq-axis-label">${Math.round(maxScore)}</text>
+        <text x="4" y="${height - padBottom + 4}" class="iq-axis-label">${Math.round(minScore)}</text>
+        <text x="${first.x}" y="${height - 8}" text-anchor="start" class="iq-axis-label">${first.point.displayDate}</text>
+        <text x="${mid.x}" y="${height - 8}" text-anchor="middle" class="iq-axis-label">${mid.point.displayDate}</text>
+        <text x="${last.x}" y="${height - 8}" text-anchor="end" class="iq-axis-label">${last.point.displayDate}</text>
+      </svg>
+    </div>
+  `;
+}
+
+function renderIQRecord(title, value, detail) {
+  return `
+    <div class="iq-record-card">
+      <div class="iq-record-title">${title}</div>
+      <div class="iq-record-value">${value}</div>
+      <div class="iq-record-detail">${detail || ""}</div>
+    </div>
+  `;
+}
+
+function formatTrendDate(value) {
+  if (!value) return "Building history";
+
+  const date = new Date(value + "T12:00:00");
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function renderHouseIQWeeklySummary(weekly) {
+  const change = Number(weekly.change || 0);
+  const changeText = change > 0 ? `+${change}` : String(change);
+  const changeClass = change > 0 ? "up" : (change < 0 ? "down" : "steady");
+
+  return `
+    <div class="iq-week-card">
+      <div class="iq-week-header">
+        <div>
+          <div class="section-card-title">Last 7 Days</div>
+          <div class="iq-week-recorded">${Number(weekly.daysRecorded || 0)} days recorded</div>
+        </div>
+        <div class="iq-week-score">
+          <strong>${Number(weekly.averageIQ || 0)}%</strong>
+          <span class="${changeClass}">${changeText} vs. previous week</span>
+        </div>
+      </div>
+      <div class="iq-week-grid">
+        <div><strong>${Number(weekly.completedTasks || 0)}</strong><span>Tasks completed</span></div>
+        <div><strong>${Number(weekly.completedRoutines || 0)}</strong><span>Routines completed</span></div>
+        <div><strong>${Number(weekly.averageHomeHealth || 0)}%</strong><span>Average Home Health</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderHouseIQInsights(insights) {
+  if (!insights || insights.length === 0) return "";
+
+  return `
+    <div class="section-title">HouseFlow Insights</div>
+    ${insights.map(insight => `
+      <div class="iq-insight-card ${insight.type || "info"}">
+        <strong>${insight.title || "Insight"}</strong>
+        <span>${insight.detail || ""}</span>
+      </div>
+    `).join("")}
   `;
 }
 
@@ -1922,6 +2492,7 @@ function completeTask(taskId, actualMinutes = "") {
   callApi("complete", { taskId, actualMinutes })
     .then(data => {
       state.data = addGainPercentages(data);
+      state.completedExpanded = true;
 
       if (task) {
         if (state.oneThingMode) {

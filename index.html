@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HouseFlow</title>
-  <link rel="stylesheet" href="styles.css?v=1260" />
+  <link rel="stylesheet" href="styles.css?v=1320" />
   <link rel="manifest" href="manifest.json" />
 </head>
 <body>
@@ -14,19 +14,23 @@
         <p class="eyebrow">HouseFlow</p>
         <h1 id="page-title">Today</h1>
       </div>
+      <button
+        id="system-button"
+        class="system-button"
+        type="button"
+        aria-label="Open system page"
+        onclick="openSystem()"
+      >⚙</button>
     </header>
     <main id="app-content"></main>
     <nav class="bottom-nav">
       <button class="nav-btn active" data-tab="today">Today</button>
       <button class="nav-btn" data-tab="quick">Quick Picks</button>
-      <button class="nav-btn" data-tab="routines">Routines</button>
-      <button class="nav-btn" data-tab="health">Home Health</button>
-      <button class="nav-btn" data-tab="houseiq">House IQ</button>
+      <button class="nav-btn" data-tab="forecast">Forecast</button>
       <button class="nav-btn" data-tab="projects">Projects</button>
-      <button class="nav-btn" data-tab="diagnostics">Diagnostics</button>
     </nav>
   </div>
-  <script src="api/config.js?v=1260"></script>
-  <script src="app.js?v=1260"></script>
+  <script src="api/config.js?v=1320"></script>
+  <script src="app.js?v=1320"></script>
 </body>
 </html>

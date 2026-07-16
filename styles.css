@@ -39,6 +39,10 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 .eyebrow {
@@ -315,7 +319,7 @@ h1 {
   background: white;
   border-top: 1px solid var(--border);
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   padding: 8px;
   gap: 6px;
 }
@@ -323,10 +327,10 @@ h1 {
 .nav-btn {
   border: none;
   border-radius: 14px;
-  padding: 10px 3px;
+  padding: 11px 5px;
   background: #eeeeee;
   color: #111;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.1;
 }
 
@@ -1073,4 +1077,496 @@ h1 {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+
+.iq-trend-card,
+.iq-week-card,
+.iq-record-card,
+.iq-insight-card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
+}
+
+.iq-trend-header,
+.iq-week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.section-card-title {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.iq-trend-change,
+.iq-week-recorded {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.iq-trend-change.up,
+.iq-week-score .up {
+  color: #147a3d;
+}
+
+.iq-trend-change.down,
+.iq-week-score .down {
+  color: #b3261e;
+}
+
+.iq-range-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.iq-range-btn {
+  border: 1px solid var(--border);
+  background: white;
+  color: #111;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.iq-range-btn.active {
+  background: #111;
+  color: white;
+  border-color: #111;
+}
+
+.iq-chart-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.iq-line-chart {
+  display: block;
+  width: 100%;
+  min-width: 430px;
+  height: auto;
+}
+
+.iq-grid-axis {
+  stroke: #bdbdbd;
+  stroke-width: 1;
+}
+
+.iq-grid-line {
+  stroke: #e4e4e4;
+  stroke-width: 1;
+  stroke-dasharray: 5 5;
+}
+
+.iq-line {
+  fill: none;
+  stroke: #111;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.iq-point {
+  fill: white;
+  stroke: #111;
+  stroke-width: 3;
+}
+
+.iq-axis-label {
+  fill: #777;
+  font-size: 11px;
+}
+
+.iq-history-empty {
+  margin-top: 14px;
+  padding: 18px;
+  background: #f4f4f4;
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.house-iq-record-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.iq-record-card {
+  margin-bottom: 0;
+}
+
+.iq-record-title {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.iq-record-value {
+  font-size: 25px;
+  font-weight: bold;
+  margin-top: 5px;
+}
+
+.iq-record-detail {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.iq-week-score {
+  text-align: right;
+}
+
+.iq-week-score strong {
+  display: block;
+  font-size: 28px;
+}
+
+.iq-week-score span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.iq-week-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.iq-week-grid > div {
+  background: #f4f4f4;
+  border-radius: 12px;
+  padding: 10px;
+  text-align: center;
+}
+
+.iq-week-grid strong {
+  display: block;
+  font-size: 21px;
+}
+
+.iq-week-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+  margin-top: 3px;
+}
+
+.iq-insight-card {
+  box-shadow: none;
+  border-left: 7px solid #777;
+}
+
+.iq-insight-card strong,
+.iq-insight-card span {
+  display: block;
+}
+
+.iq-insight-card span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  margin-top: 5px;
+}
+
+.iq-insight-card.success {
+  border-left-color: #2e7d32;
+}
+
+.iq-insight-card.attention {
+  border-left-color: var(--overdue);
+}
+
+.iq-insight-card.focus {
+  border-left-color: #5c6bc0;
+}
+
+@media (max-width: 439px) {
+  .iq-trend-header,
+  .iq-week-header {
+    align-items: center;
+  }
+
+  .iq-range-btn {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+
+  .iq-week-grid {
+    gap: 5px;
+  }
+
+  .iq-week-grid > div {
+    padding: 8px 5px;
+  }
+
+  .iq-week-grid strong {
+    font-size: 18px;
+  }
+}
+
+
+.system-button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: white;
+  color: #111;
+  font-size: 20px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.system-button[hidden] {
+  display: none;
+}
+
+.page-back-button {
+  border: none;
+  background: transparent;
+  color: #111;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 0 12px;
+}
+
+.system-card,
+.forecast-intro-card,
+.forecast-day-card,
+.today-accordion-card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
+}
+
+.system-card-title,
+.forecast-intro-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.system-link-button {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: #111;
+  padding: 14px 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  font-size: 16px;
+}
+
+.system-link-button:first-of-type {
+  border-top: none;
+}
+
+.system-link-button strong {
+  font-size: 24px;
+  font-weight: normal;
+}
+
+.system-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+  font-size: 13px;
+}
+
+.system-info-row:first-of-type {
+  border-top: none;
+}
+
+.system-info-row span {
+  color: var(--muted);
+}
+
+.system-info-row strong {
+  text-align: right;
+}
+
+.system-sign-out-button {
+  width: 100%;
+  border: 1px solid #b3261e;
+  border-radius: 14px;
+  background: white;
+  color: #b3261e;
+  padding: 13px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.today-accordion-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.today-accordion-header,
+.forecast-day-header {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #111;
+  padding: 16px;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.today-accordion-header strong,
+.forecast-day-header strong {
+  display: block;
+  font-size: 17px;
+}
+
+.today-accordion-header span,
+.forecast-day-header span,
+.forecast-intro-detail {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.today-accordion-card > .task-card,
+.today-accordion-card > .completed-card,
+.forecast-day-items > .task-card {
+  margin: 0 12px 12px;
+}
+
+.accordion-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 4px 16px 18px;
+  line-height: 1.4;
+}
+
+.upcoming-day-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 16px 8px;
+  border-top: 1px solid var(--border);
+}
+
+.upcoming-day-header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.accordion-subsection {
+  padding: 4px 16px 0;
+  margin-top: 8px;
+}
+
+.completed-accordion {
+  margin-top: 12px;
+}
+
+.forecast-day-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.forecast-day-card.selected {
+  outline: 2px solid var(--selected-border);
+  background: var(--selected);
+}
+
+.forecast-day-items {
+  padding-top: 2px;
+}
+
+.forecast-workload {
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.forecast-workload.clear {
+  background: #eeeeee;
+  color: #555;
+}
+
+.forecast-workload.light {
+  background: #e7f5e9;
+  color: #236b2b;
+}
+
+.forecast-workload.moderate {
+  background: #fff3cd;
+  color: #7a5b00;
+}
+
+.forecast-workload.heavy {
+  background: #fde8e7;
+  color: #9d211a;
+}
+
+@media (max-width: 439px) {
+  .bottom-nav {
+    gap: 7px;
+  }
+
+  .nav-btn {
+    font-size: 10px;
+    padding: 11px 3px;
+  }
+
+  .system-button {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+
+  .today-accordion-header,
+  .forecast-day-header {
+    padding: 14px;
+  }
+
+  .today-accordion-header strong,
+  .forecast-day-header strong {
+    font-size: 15px;
+  }
+}
+
+
+/* v1.3.2 score card alignment */
+.today-score-grid .health-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.today-score-grid .secondary-btn {
+  margin-top: auto;
+}
+
+.health-task-total {
+  font-weight: 700;
 }
