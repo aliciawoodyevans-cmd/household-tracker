@@ -1646,3 +1646,14 @@ h1 {
   .cleaning-task-actions { grid-column:2; flex-direction:row; flex-wrap:wrap; min-width:0; }
   .cleaning-check-btn, .cleaning-progress-btn { flex:1 1 auto; }
 }
+
+
+/* v2.0.1 live checklist */
+.live-checklist-note {
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+.cleaning-task-title {
+  line-height: 1.25;
+}

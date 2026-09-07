@@ -639,14 +639,12 @@ function renderCleaningSessionCard(session) {
     html += `<div class="cleaning-queue-note">${session.eligibleNotOffered} other eligible ${session.eligibleNotOffered === 1 ? "task stays" : "tasks stay"} in the queue without being counted as skipped.</div>`;
   }
 
-  if (session.status === "Not Started") {
-    html += `<button class="complete-btn session-main-btn" onclick="startCleaningSession('${escapeQuotes(session.sessionId)}')">${isTimed ? `Start ${session.goalMinutes} Minutes` : `Start ${session.displayName}`}</button>`;
-  } else if (session.status === "In Progress") {
+  if (["Not Started", "In Progress"].includes(session.status)) {
     const requiresAllResolved = ["Waste", "Laundry"].includes(session.sessionType);
-    if (!requiresAllResolved || unresolved === 0) {
-      html += `<button class="complete-btn session-main-btn" onclick="finishCleaningSession('${escapeQuotes(session.sessionId)}')">${isTimed ? "Finish 15 Minute Session" : `Finish ${session.displayName}`}</button>`;
-    } else {
-      html += `<div class="cleaning-session-note">Finish the applicable items above. HouseFlow will close this session when everything is resolved.</div>`;
+    if (!requiresAllResolved) {
+      html += `<button class="complete-btn session-main-btn" onclick="finishCleaningSession('${escapeQuotes(session.sessionId)}')">Finish Session</button>`;
+    } else if (unresolved > 0) {
+      html += `<div class="cleaning-session-note">Check off the applicable items above. HouseFlow will close this session when everything is resolved.</div>`;
     }
   } else if (session.status === "Completed") {
     html += `<div class="session-success">✓ Session complete${unresolved ? ` • ${unresolved} items can wait for their next opportunity` : ""}</div>`;
@@ -667,7 +665,7 @@ function renderCleaningTaskRow(session, task) {
   if (task.activeFridayProject) labels.push("active Friday project");
 
   let actions = "";
-  if (session.status === "In Progress" && !done) {
+  if (["Not Started", "In Progress"].includes(session.status) && !done) {
     actions += `<button class="cleaning-check-btn" onclick="completeCleaningSessionTask('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')">✓ Done</button>`;
     if (session.sessionType === "Friday Focus" && task.isLong) {
       actions += `<button class="secondary-btn cleaning-progress-btn" onclick="workFriday15('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')">Worked 15 Minutes</button>`;
@@ -677,11 +675,21 @@ function renderCleaningTaskRow(session, task) {
     }
   }
 
+  const duplicateTitleCount = (session.tasks || []).filter(
+    other => String(other.task || "").trim().toLowerCase() === String(task.task || "").trim().toLowerCase()
+  ).length;
+  const locationLabel = task.area || task.zone || "";
+  const alwaysShowLocation = session.sessionType === "Daily";
+  const displayTaskName =
+    locationLabel && (alwaysShowLocation || duplicateTitleCount > 1)
+      ? `${locationLabel} • ${task.task}`
+      : task.task;
+
   return `
     <div class="cleaning-task-row ${color} ${done ? "done" : ""}">
       <div class="cleaning-task-checkmark">${done ? "✓" : "☐"}</div>
       <div class="cleaning-task-body">
-        <div class="cleaning-task-title">${task.task}</div>
+        <div class="cleaning-task-title">${displayTaskName}</div>
         <div class="cleaning-task-meta">${Number(task.minutes || 0)} min${labels.length ? ` • ${labels.join(" • ")}` : ""}</div>
         ${task.worked ? `<div class="cleaning-worked-note">Worked 15 minutes today</div>` : ""}
         ${task.outcome === "Not Needed" ? `<div class="cleaning-worked-note">Nothing needed this month</div>` : ""}
