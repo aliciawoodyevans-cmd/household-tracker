@@ -1570,3 +1570,79 @@ h1 {
 .health-task-total {
   font-weight: 700;
 }
+
+
+/* v1.3.3 blank line before score card buttons */
+.today-score-grid .score-card-button-gap {
+  min-height: 12px;
+  margin-top: auto;
+}
+
+.today-score-grid .score-card-detail-button {
+  margin-top: 0;
+}
+
+
+/* HouseFlow v2.0.0 15 Minute Cleaning Model */
+.model-warning {
+  background: #fff3cd;
+  border: 1px solid #d3ae42;
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 12px;
+  color: #5c4800;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cleaning-session-card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.08);
+  border-left: 7px solid #777;
+}
+.cleaning-session-card.completed { border-left-color: #2e7d32; }
+.cleaning-session-card.in-progress { border-left-color: #4f6bed; }
+.cleaning-session-card.partial { border-left-color: #d39b00; }
+.cleaning-session-card.missed { border-left-color: #b3261e; }
+.cleaning-session-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.cleaning-session-eyebrow { color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+.cleaning-session-title { font-size:21px; font-weight:700; margin-top:2px; }
+.cleaning-session-meta { color:var(--muted); font-size:12px; margin-top:4px; }
+.cleaning-session-status { border-radius:999px; padding:6px 9px; background:#eee; font-size:10px; font-weight:700; white-space:nowrap; }
+.cleaning-session-status.completed { background:#e7f5e9; color:#236b2b; }
+.cleaning-session-status.in-progress { background:#e9edff; color:#3147a8; }
+.cleaning-session-status.missed { background:#fde8e7; color:#9d211a; }
+.cleaning-session-note, .cleaning-queue-note { color:var(--muted); font-size:12px; line-height:1.4; margin-top:10px; }
+.cleaning-task-list { margin-top:12px; }
+.cleaning-task-row { display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:9px; align-items:start; padding:11px 0; border-top:1px solid var(--border); }
+.cleaning-task-row:first-child { border-top:none; }
+.cleaning-task-row.yellow { background:rgba(255,193,7,.11); margin-left:-8px; margin-right:-8px; padding-left:8px; padding-right:8px; border-radius:10px; }
+.cleaning-task-row.red { background:rgba(211,47,47,.09); margin-left:-8px; margin-right:-8px; padding-left:8px; padding-right:8px; border-radius:10px; }
+.cleaning-task-row.done { opacity:.62; }
+.cleaning-task-checkmark { font-size:19px; line-height:1.2; }
+.cleaning-task-title { font-size:14px; font-weight:650; }
+.cleaning-task-meta { color:var(--muted); font-size:11px; margin-top:3px; line-height:1.35; }
+.cleaning-worked-note { color:#236b2b; font-size:11px; margin-top:4px; font-weight:600; }
+.cleaning-task-actions { display:flex; flex-direction:column; gap:5px; min-width:84px; }
+.cleaning-check-btn { border:none; border-radius:10px; background:#111; color:white; padding:8px 9px; font-size:11px; font-weight:650; }
+.cleaning-progress-btn { margin:0; padding:7px 8px; font-size:10px; }
+.session-main-btn { width:100%; margin-top:12px; }
+.session-success { margin-top:12px; padding:10px; border-radius:12px; background:#e7f5e9; color:#236b2b; font-size:12px; font-weight:650; }
+.completed-session-row, .health-session-row, .forecast-session-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:11px 14px; border-top:1px solid var(--border); }
+.completed-session-row span, .health-session-row span, .forecast-session-row span { color:var(--muted); font-size:11px; display:block; margin-top:3px; }
+.health-session-row { background:var(--card); border:1px solid var(--border); border-radius:14px; margin-bottom:8px; }
+.health-session-status { font-size:11px; font-weight:700; white-space:nowrap; }
+.health-session-status.completed { color:#236b2b; }
+.health-session-status.in-progress { color:#3147a8; }
+.forecast-session-row { margin:0 12px 8px; background:#f7f7f7; border-radius:12px; border-top:none; }
+
+@media (max-width: 439px) {
+  .cleaning-session-card { padding:14px; }
+  .cleaning-session-title { font-size:18px; }
+  .cleaning-task-row { grid-template-columns:20px minmax(0,1fr); }
+  .cleaning-task-actions { grid-column:2; flex-direction:row; flex-wrap:wrap; min-width:0; }
+  .cleaning-check-btn, .cleaning-progress-btn { flex:1 1 auto; }
+}

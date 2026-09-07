@@ -342,34 +342,18 @@ function renderBackButton(label, action) {
 
 function renderSystem() {
   const diagnostics = state.data.diagnostics || {};
-
   return `
     ${renderBackButton("Today", "backToToday()")}
-
     <div class="system-card">
       <div class="system-card-title">HouseFlow Tools</div>
-      <button class="system-link-button" onclick="openAllRoutines()">
-        <span>All Routines</span>
-        <strong>›</strong>
-      </button>
-      <button class="system-link-button" onclick="openDiagnostics()">
-        <span>Diagnostics</span>
-        <strong>›</strong>
-      </button>
+      <button class="system-link-button" onclick="openDiagnostics()"><span>Diagnostics</span><strong>›</strong></button>
     </div>
-
     <div class="system-card">
       <div class="system-card-title">System Information</div>
-      <div class="system-info-row">
-        <span>App version</span>
-        <strong>${diagnostics.appVersion || "Unknown"}</strong>
-      </div>
-      <div class="system-info-row">
-        <span>Last sync</span>
-        <strong>${diagnostics.lastSync || "Unknown"}</strong>
-      </div>
+      <div class="system-info-row"><span>App version</span><strong>${diagnostics.appVersion || "Unknown"}</strong></div>
+      <div class="system-info-row"><span>Last sync</span><strong>${diagnostics.lastSync || "Unknown"}</strong></div>
+      <div class="system-info-row"><span>Cleaning model</span><strong>${diagnostics.cleaningModel?.ready ? "Ready" : "Needs setup"}</strong></div>
     </div>
-
     <button class="system-sign-out-button" onclick="signOut()">Sign Out</button>
   `;
 }
@@ -440,118 +424,63 @@ function formatTaskBreakdown(individualCount, routineTaskCount) {
 }
 
 function renderToday() {
-  const individualToday = state.data.today || [];
-  const individualWeek = state.data.week || [];
-  const routines = state.data.routines || [];
-  const workItems = getTodayWorkItems(individualToday, individualWeek, routines);
-  const currentItems = workItems.filter(item =>
-    ["critical", "overdue", "today"].includes(item.status)
-  );
-  const upcomingItems = workItems.filter(item => {
-    const days = getDaysFromToday(item.due);
+  const cleaning = state.data.cleaning || {};
+  const sessions = cleaning.today?.sessions || [];
+  const byDateToday = state.data.today || [];
+  const byDateWeek = state.data.week || [];
+  const upcoming = byDateWeek.filter(task => {
+    const days = getDaysFromToday(task.due);
     return days >= 1 && days <= 2;
   });
   const completed = state.data.completedToday || [];
-  const completedRoutines = state.data.completedRoutinesToday || [];
-  const currentMinutes = currentItems.reduce(
-    (sum, item) => sum + Number(item.minutes || 0),
-    0
-  );
-  const remainingIndividualTasks = currentItems.filter(
-    item => item.kind === "task"
-  ).length;
-  const remainingRoutineTasks = currentItems
-    .filter(item => item.kind === "routine")
-    .reduce((sum, item) => {
-      const unfinishedTasks = (item.routine?.tasks || []).filter(
-        task => !task.done && task.status !== "missing"
-      ).length;
-
-      return sum + unfinishedTasks;
-    }, 0);
-  const totalRemainingTasks =
-    remainingIndividualTasks + remainingRoutineTasks;
+  const completedSessions = state.data.completedSessionsToday || [];
   const health = state.data.health || {};
-  const healthScore = Number(health.overall ?? 100);
   const houseIQ = state.data.houseIQ || {};
-  const houseIQScore = Number(houseIQ.score ?? 80);
-  const houseIQLabel = houseIQ.label || "Building rhythm";
 
   let html = `
+    ${renderCleaningModelWarning(cleaning.modelReady)}
     <div class="today-score-grid">
       <div class="health-card today-health-card">
         <div class="house-iq-eyebrow">Home Health</div>
-        <div class="health-percent">${healthScore}%</div>
+        <div class="health-percent">${Number(health.overall ?? 100)}%</div>
         <div class="health-detail health-task-total">
-          ${formatRemainingTaskCount(totalRemainingTasks)}
+          ${Number(health.sessionsRemaining || 0)} cleaning ${Number(health.sessionsRemaining || 0) === 1 ? "session" : "sessions"} remaining
         </div>
         <div class="health-detail">
-          ${formatTaskBreakdown(
-            remainingIndividualTasks,
-            remainingRoutineTasks
-          )}
+          ${Number(health.byDateRemaining || 0)} date based ${Number(health.byDateRemaining || 0) === 1 ? "task" : "tasks"} remaining
         </div>
-        <button class="secondary-btn" onclick="openHomeHealth()">View Home Health</button>
+        <div class="score-card-button-gap"></div>
+        <button class="secondary-btn score-card-detail-button" onclick="openHomeHealth()">View Home Health</button>
       </div>
 
       <div class="health-card house-iq-summary-card">
         <div class="house-iq-eyebrow">House IQ</div>
-        <div class="health-percent">${houseIQScore}%</div>
-        <div class="house-iq-label">${houseIQLabel}</div>
-        <div class="health-detail">
-          ${Number(houseIQ.history?.onTimeRecords || 0)} of
-          ${Number(houseIQ.history?.totalRecords || 0)} recent completions on time
-        </div>
-        <button class="secondary-btn" onclick="openHouseIQ()">View House IQ</button>
+        <div class="health-percent">${Number(houseIQ.score ?? 100)}%</div>
+        <div class="house-iq-label">${houseIQ.label || "Building rhythm"}</div>
+        <div class="health-detail">15 minute consistency + date based timeliness</div>
+        <div class="score-card-button-gap"></div>
+        <button class="secondary-btn score-card-detail-button" onclick="openHouseIQ()">View House IQ</button>
       </div>
     </div>
-
-    <div class="today-action-panel">
-      ${state.oneThingMode ? "" : `
-        <button class="complete-btn today-action-btn" onclick="startWorking()">View All Tasks</button>
-        <button class="complete-btn today-action-btn" onclick="doOneThing()">Do One Thing</button>
-      `}
-    </div>
-
-    ${renderWeeklyMomentumCard()}
   `;
 
-  if (state.oneThingMode) {
-    html += renderGuidedMode(sortByDueDate(individualToday), sortByDueDate(individualWeek));
-  } else if (state.showWork) {
-    html += `
-      <div class="summary-card">
-        ${summaryItem("Critical", countWorkItemsByStatus(currentItems, "critical"))}
-        ${summaryItem("Overdue", countWorkItemsByStatus(currentItems, "overdue"))}
-        ${summaryItem("Due Today", countWorkItemsByStatus(currentItems, "today"))}
-        ${summaryItem("Upcoming", upcomingItems.length)}
-      </div>
-    `;
+  sessions.forEach(session => {
+    html += renderCleaningSessionCard(session);
+  });
 
-    html += renderWorkItemGroup(
-      "Critical",
-      currentItems.filter(item => item.status === "critical")
-    );
-    html += renderWorkItemGroup(
-      "Overdue",
-      currentItems.filter(item => item.status === "overdue")
-    );
-    html += renderWorkItemGroup(
-      "Due Today",
-      currentItems.filter(item => item.status === "today")
-    );
-
-    if (currentItems.length === 0) {
-      html += `<div class="empty">No work currently due. 🎉</div>`;
-    }
+  if (byDateToday.length > 0) {
+    html += `<div class="section-title">By Date (${byDateToday.length})</div>`;
+    ["critical","overdue","today"].forEach(status => {
+      const group = byDateToday.filter(task => task.status === status).sort(sortTodayWorkItems);
+      if (!group.length) return;
+      const label = status === "critical" ? "Critical" : status === "overdue" ? "Overdue" : "Due Today";
+      html += `<div class="subsection-title">${label}</div>`;
+      group.forEach(task => html += taskCard(task));
+    });
   }
 
-  if (!state.oneThingMode) {
-    html += renderUpcomingAccordion(upcomingItems);
-  }
-
-  html += renderCompletedAccordion(completedRoutines, completed);
-
+  html += renderUpcomingAccordionFromTasks(upcoming);
+  html += renderCompletedAccordionV2(completedSessions, completed);
   return html;
 }
 
@@ -665,6 +594,168 @@ function renderCompletedAccordion(completedRoutines, completedTasks) {
 
   html += `</div>`;
   return html;
+}
+
+
+function renderCleaningModelWarning(modelReady) {
+  if (!modelReady || modelReady.ready) return "";
+  return `<div class="model-warning"><strong>Cleaning model setup is incomplete.</strong><br>${Number(modelReady.unclassifiedTasks || 0)} Task Master rows still need a Scheduling Home.</div>`;
+}
+
+function renderCleaningSessionCard(session) {
+  const statusClass = String(session.status || "not-started").toLowerCase().replace(/\s+/g,"-");
+  const isTimed = Number(session.goalMinutes || 0) > 0;
+  const titleMeta = [];
+  if (session.cycle) titleMeta.push(`Cycle ${session.cycle}`);
+  if (session.fridayWeek) titleMeta.push(`Week ${session.fridayWeek}`);
+  if (isTimed) titleMeta.push(`${session.goalMinutes} minute goal`);
+  const unresolved = (session.tasks || []).filter(task => !task.completed && !task.worked && task.outcome !== "Not Needed").length;
+
+  let html = `
+    <div class="cleaning-session-card ${statusClass}">
+      <div class="cleaning-session-header">
+        <div>
+          <div class="cleaning-session-eyebrow">${session.sessionType}</div>
+          <div class="cleaning-session-title">${session.displayName}</div>
+          <div class="cleaning-session-meta">${titleMeta.join(" • ")}</div>
+        </div>
+        <div class="cleaning-session-status ${statusClass}">${session.status}</div>
+      </div>
+  `;
+
+  if (session.status === "Not Started") {
+    html += `<div class="cleaning-session-note">${isTimed ? "Work from the top for 15 minutes. You do not need to finish the whole list." : "Complete the applicable items for this household day."}</div>`;
+  }
+
+  if (!(session.tasks || []).length) {
+    html += `<div class="accordion-empty">Nothing is eligible for this session.</div>`;
+  } else {
+    html += `<div class="cleaning-task-list">`;
+    (session.tasks || []).forEach(task => html += renderCleaningTaskRow(session, task));
+    html += `</div>`;
+  }
+
+  if (session.sessionType === "Friday Focus" && Number(session.eligibleNotOffered || 0) > 0) {
+    html += `<div class="cleaning-queue-note">${session.eligibleNotOffered} other eligible ${session.eligibleNotOffered === 1 ? "task stays" : "tasks stay"} in the queue without being counted as skipped.</div>`;
+  }
+
+  if (session.status === "Not Started") {
+    html += `<button class="complete-btn session-main-btn" onclick="startCleaningSession('${escapeQuotes(session.sessionId)}')">${isTimed ? `Start ${session.goalMinutes} Minutes` : `Start ${session.displayName}`}</button>`;
+  } else if (session.status === "In Progress") {
+    const requiresAllResolved = ["Waste", "Laundry"].includes(session.sessionType);
+    if (!requiresAllResolved || unresolved === 0) {
+      html += `<button class="complete-btn session-main-btn" onclick="finishCleaningSession('${escapeQuotes(session.sessionId)}')">${isTimed ? "Finish 15 Minute Session" : `Finish ${session.displayName}`}</button>`;
+    } else {
+      html += `<div class="cleaning-session-note">Finish the applicable items above. HouseFlow will close this session when everything is resolved.</div>`;
+    }
+  } else if (session.status === "Completed") {
+    html += `<div class="session-success">✓ Session complete${unresolved ? ` • ${unresolved} items can wait for their next opportunity` : ""}</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function renderCleaningTaskRow(session, task) {
+  const done = task.completed || task.worked || task.outcome === "Not Needed";
+  const color = task.colorStatus || "normal";
+  const labels = [];
+  if (task.skipCount >= 2) labels.push(`missed ${task.skipCount} times`);
+  else if (task.skipCount === 1) labels.push("missed last opportunity");
+  if (task.waitingRotations > 0) labels.push(`waiting ${task.waitingRotations} ${task.waitingRotations === 1 ? "rotation" : "rotations"}`);
+  if (task.progressMinutes > 0) labels.push(`${task.progressMinutes} min invested`);
+  if (task.activeFridayProject) labels.push("active Friday project");
+
+  let actions = "";
+  if (session.status === "In Progress" && !done) {
+    actions += `<button class="cleaning-check-btn" onclick="completeCleaningSessionTask('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')">✓ Done</button>`;
+    if (session.sessionType === "Friday Focus" && task.isLong) {
+      actions += `<button class="secondary-btn cleaning-progress-btn" onclick="workFriday15('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')">Worked 15 Minutes</button>`;
+    }
+    if (session.sessionType === "Waste" && task.taskId === "WS005") {
+      actions += `<button class="secondary-btn cleaning-progress-btn" onclick="cleaningTaskNotNeeded('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')">Nothing This Month</button>`;
+    }
+  }
+
+  return `
+    <div class="cleaning-task-row ${color} ${done ? "done" : ""}">
+      <div class="cleaning-task-checkmark">${done ? "✓" : "☐"}</div>
+      <div class="cleaning-task-body">
+        <div class="cleaning-task-title">${task.task}</div>
+        <div class="cleaning-task-meta">${Number(task.minutes || 0)} min${labels.length ? ` • ${labels.join(" • ")}` : ""}</div>
+        ${task.worked ? `<div class="cleaning-worked-note">Worked 15 minutes today</div>` : ""}
+        ${task.outcome === "Not Needed" ? `<div class="cleaning-worked-note">Nothing needed this month</div>` : ""}
+      </div>
+      <div class="cleaning-task-actions">${actions}</div>
+    </div>
+  `;
+}
+
+function startCleaningSession(sessionId) {
+  renderLoading();
+  callApi("startCleaningSession", { sessionId })
+    .then(data => { state.data = addGainPercentages(data); state.loading = false; render(); })
+    .catch(error => renderError(error));
+}
+
+function completeCleaningSessionTask(sessionId, taskId) {
+  callApi("completeCleaningTask", { sessionId, taskId })
+    .then(data => { state.data = addGainPercentages(data); render(); })
+    .catch(error => renderError(error));
+}
+
+function finishCleaningSession(sessionId) {
+  renderLoading();
+  callApi("finishCleaningSession", { sessionId })
+    .then(data => { state.data = addGainPercentages(data); state.loading = false; state.completedExpanded = true; render(); })
+    .catch(error => renderError(error));
+}
+
+function workFriday15(sessionId, taskId) {
+  renderLoading();
+  callApi("workFriday15", { sessionId, taskId })
+    .then(data => { state.data = addGainPercentages(data); state.loading = false; state.completedExpanded = true; render(); })
+    .catch(error => renderError(error));
+}
+
+function cleaningTaskNotNeeded(sessionId, taskId) {
+  callApi("cleaningTaskNotNeeded", { sessionId, taskId })
+    .then(data => { state.data = addGainPercentages(data); render(); })
+    .catch(error => renderError(error));
+}
+
+function renderUpcomingAccordionFromTasks(items) {
+  const upcomingItems = items || [];
+  let html = `<div class="today-accordion-card"><button class="today-accordion-header" onclick="toggleUpcomingAccordion()"><div><strong>${state.upcomingExpanded ? "▼" : "▶"} Upcoming (${upcomingItems.length})</strong><span>Next 2 days • date based tasks only</span></div></button>`;
+  if (state.upcomingExpanded) {
+    if (!upcomingItems.length) html += `<div class="accordion-empty">No date based tasks due during the next two days.</div>`;
+    [1,2].forEach(days => {
+      const dayItems=upcomingItems.filter(task => getDaysFromToday(task.due) === days);
+      if (!dayItems.length) return;
+      html += `<div class="upcoming-day-header"><strong>${days===1 ? "Tomorrow" : "Day After Tomorrow"}</strong><span>${dayItems.length} ${dayItems.length===1?"task":"tasks"}</span></div>`;
+      dayItems.forEach(task => html += taskCard(task));
+    });
+  }
+  return html + `</div>`;
+}
+
+function renderCompletedAccordionV2(completedSessions, completedTasks) {
+  const sessions = completedSessions || [];
+  const tasks = completedTasks || [];
+  const total = sessions.length + tasks.length;
+  let html = `<div class="today-accordion-card completed-accordion"><button class="today-accordion-header" onclick="toggleCompletedAccordion()"><div><strong>${state.completedExpanded ? "▼" : "▶"} Completed Today (${total})</strong><span>${sessions.length} sessions • ${tasks.length} task completions</span></div></button>`;
+  if (state.completedExpanded) {
+    if (!total) html += `<div class="accordion-empty">Nothing completed yet today.</div>`;
+    if (sessions.length) {
+      html += `<div class="subsection-title accordion-subsection">Completed Sessions</div>`;
+      sessions.forEach(session => html += `<div class="completed-session-row"><strong>✓ ${session.focusGroup || session.sessionType}</strong><span>${session.actualMinutes || session.plannedMinutes || ""}${session.actualMinutes || session.plannedMinutes ? " min" : ""}</span></div>`);
+    }
+    if (tasks.length) {
+      html += `<div class="subsection-title accordion-subsection">Completed Tasks</div>`;
+      tasks.forEach(task => html += completedCard(task));
+    }
+  }
+  return html + `</div>`;
 }
 
 function getTodayWorkItems(individualToday, individualWeek, routines) {
@@ -1259,54 +1350,37 @@ function quickPickItemCard(item) {
 
 
 function renderForecast() {
-  const workItems = getTodayWorkItems(
-    state.data.today || [],
-    state.data.week || [],
-    state.data.routines || []
-  ).filter(item => {
-    const days = getDaysFromToday(item.due);
-    return days >= 1 && days <= 7;
+  const cleaningDays = state.data.cleaning?.forecast || [];
+  const byDateWeek = state.data.week || [];
+  let html = `<div class="forecast-intro-card"><div class="forecast-intro-title">Next 7 Days</div><div class="forecast-intro-detail">Cleaning appears as bounded sessions. Date based maintenance is shown separately and never mixed into cleaning debt.</div></div>`;
+  cleaningDays.forEach(day => {
+    const byDate = byDateWeek.filter(task => getDateKeyFromDisplay(task.due) === day.date);
+    const sessionMinutes = (day.sessions || []).reduce((sum,session)=>sum+Number(session.goalMinutes||0),0);
+    const taskMinutes = byDate.reduce((sum,task)=>sum+Number(task.minutes||0),0);
+    const minutes=sessionMinutes+taskMinutes;
+    const workload=getForecastWorkload(minutes);
+    const isSelected=state.selectedForecastDate===day.date;
+    html += `<div class="forecast-day-card ${isSelected?"selected":""}"><button class="forecast-day-header" onclick="toggleForecastDay('${day.date}')"><div><strong>${isSelected?"▼":"▶"} ${day.displayDate}</strong><span>${(day.sessions||[]).length} household sessions • ${byDate.length} date based tasks • ${minutes} planned min</span></div><div class="forecast-workload ${workload.className}">${workload.label}</div></button>`;
+    if (isSelected) {
+      html += `<div class="forecast-day-items">`;
+      (day.sessions||[]).forEach(session => html += `<div class="forecast-session-row"><strong>${session.displayName}</strong><span>${session.goalMinutes ? session.goalMinutes + " min" : "scheduled"}${session.cycle ? ` • Cycle ${session.cycle}` : ""}${session.fridayWeek ? ` • Week ${session.fridayWeek}` : ""}</span></div>`);
+      byDate.forEach(task => html += taskCard(task));
+      if (!(day.sessions||[]).length && !byDate.length) html += `<div class="accordion-empty">No scheduled work.</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
   });
-
-  let html = `
-    <div class="forecast-intro-card">
-      <div class="forecast-intro-title">Next 7 Days</div>
-      <div class="forecast-intro-detail">
-        Upcoming on Today shows only the next two days. Forecast shows the full week.
-      </div>
-    </div>
-  `;
-
-  for (let daysAhead = 1; daysAhead <= 7; daysAhead++) {
-    const date = addClientDays(new Date(), daysAhead);
-    const dateKey = getClientDateKey(date);
-    const dayItems = workItems
-      .filter(item => getDaysFromToday(item.due) === daysAhead)
-      .sort(sortTodayWorkItems);
-    const minutes = dayItems.reduce(
-      (sum, item) => sum + Number(item.minutes || 0),
-      0
-    );
-    const routines = dayItems.filter(item => item.kind === "routine").length;
-    const tasks = dayItems.filter(item => item.kind === "task").length;
-    const isSelected = state.selectedForecastDate === dateKey;
-    const workload = getForecastWorkload(minutes);
-
-    html += `
-      <div class="forecast-day-card ${isSelected ? "selected" : ""}">
-        <button class="forecast-day-header" onclick="toggleForecastDay('${dateKey}')">
-          <div>
-            <strong>${isSelected ? "▼" : "▶"} ${formatForecastDate(date, daysAhead)}</strong>
-            <span>${tasks} tasks • ${routines} routines • ${minutes} min</span>
-          </div>
-          <div class="forecast-workload ${workload.className}">${workload.label}</div>
-        </button>
-        ${isSelected ? renderForecastDayItems(dayItems) : ""}
-      </div>
-    `;
-  }
-
   return html;
+}
+
+function getDateKeyFromDisplay(value) {
+  const timestamp=getSortableDate(value);
+  if (!Number.isFinite(timestamp)) return "";
+  const d=new Date(timestamp);
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
 }
 
 function toggleForecastDay(dateKey) {
@@ -1507,58 +1581,26 @@ function selectRoutine(id) {
 }
 
 function renderHomeHealth() {
-  const health = state.data.health;
-
-  if (!health) {
-    return `<div class="empty">No Home Health data available.</div>`;
-  }
-
+  const health = state.data.health || {};
+  const sessions = state.data.cleaning?.today?.sessions || [];
+  const byDate = state.data.today || [];
   let html = `
     <div class="health-card home-health-overview-card">
       <div class="house-iq-eyebrow">Home Health</div>
       <div class="health-percent">${Number(health.overall ?? 100)}%</div>
-      <div class="health-detail">
-        ${formatHealthWeight(health.completedWeight)} of
-        ${formatHealthWeight(health.totalWeight)} current effort complete
-      </div>
-      <div class="health-detail">
-        ${Number(health.individualDue || 0)} individual tasks remaining •
-        ${Number(health.routineDue || 0)} routines in progress or remaining
-      </div>
+      <div class="health-detail">${Number(health.sessionsCompleted || 0)} of ${sessions.length} scheduled household sessions complete today</div>
+      <div class="health-detail">${Number(health.byDateRemaining || 0)} date based ${Number(health.byDateRemaining || 0) === 1 ? "task" : "tasks"} remaining</div>
     </div>
-
-    <div class="section-title">Health by Zone</div>
+    <div class="section-title">Today's Household Rhythm</div>
   `;
-
-  (health.zones || []).forEach(zone => {
-    const isSelected = state.selectedZone === zone.zone;
-    const zoneTasks = getZoneTasks(zone.zone);
-    const zoneRoutines = getZoneRoutines(zone.zone);
-    const bestTask = getBestTask(zoneTasks, []);
-    const otherTasks = bestTask
-      ? zoneTasks.filter(task => task.row !== bestTask.row)
-      : zoneTasks;
-
-    html += `
-      <div class="health-card ${isSelected ? "selected-zone" : ""}" onclick="selectZone('${escapeQuotes(zone.zone)}')">
-        <strong>${isSelected ? "▼" : "▶"} ${zone.zone}</strong>
-        <div class="health-percent">${zone.percent}%</div>
-        <div class="health-bar-wrap"><div class="health-bar" style="width:${zone.percent}%"></div></div>
-        <div class="health-detail">
-          ${formatHealthWeight(zone.completedWeight)} of
-          ${formatHealthWeight(zone.totalWeight)} current effort complete
-        </div>
-        <div class="health-detail">
-          ${Number(zone.individualDueCount || 0)} tasks remaining •
-          ${Number(zone.routineDueCount || 0)} routines in progress or remaining
-        </div>
-        <div class="zone-task-list ${isSelected ? "expanded" : ""}">
-          ${isSelected ? renderExpandedHealthZone(zoneRoutines, bestTask, otherTasks) : ""}
-        </div>
-      </div>
-    `;
+  sessions.forEach(session => {
+    const remaining=(session.tasks||[]).filter(task => !task.completed && !task.worked && task.outcome !== "Not Needed").length;
+    html += `<div class="health-session-row"><div><strong>${session.displayName}</strong><span>${remaining} checklist ${remaining===1?"item":"items"} remaining</span></div><div class="health-session-status ${String(session.status).toLowerCase().replace(/\s+/g,"-")}">${session.status}</div></div>`;
   });
-
+  if (byDate.length) {
+    html += `<div class="section-title">Date Based Work</div>`;
+    byDate.forEach(task => html += taskCard(task));
+  }
   return html;
 }
 
@@ -1593,77 +1635,28 @@ function renderHouseIQ() {
   const houseIQ = state.data.houseIQ;
   const trends = state.data.houseIQTrends || {};
   const snapshots = trends.snapshots || [];
-
-  if (!houseIQ) {
-    return `<div class="empty">No House IQ data available.</div>`;
-  }
-
-  const current = houseIQ.components?.currentControl || {};
-  const individual = houseIQ.components?.individualTimeliness || {};
-  const routine = houseIQ.components?.routineRhythm || {};
-  const overdueNow =
-    Number(houseIQ.current?.overdueTasks || 0) +
-    Number(houseIQ.current?.overdueRoutines || 0);
-
+  if (!houseIQ) return `<div class="empty">No House IQ data available.</div>`;
+  const daily = houseIQ.components?.dailyRhythm || {};
+  const focus = houseIQ.components?.focusRhythm || {};
+  const maintenance = houseIQ.components?.maintenanceTimeliness || {};
   return `
     <div class="house-iq-card">
-      <div class="house-iq-header">
-        <div>
-          <div class="house-iq-eyebrow">House IQ</div>
-          <div class="house-iq-label">${houseIQ.label || "Building rhythm"}</div>
-        </div>
-        <div class="house-iq-score">${Number(houseIQ.score || 0)}%</div>
-      </div>
-      <div class="house-iq-main-bar"><div style="width:${Math.min(100, Math.max(0, Number(houseIQ.score || 0)))}%"></div></div>
-      <div class="house-iq-explainer">
-        Based on current overdue work and the last ${houseIQ.windowDays || 28} days of individual task and routine completions.
-        Projects are excluded.
-      </div>
-      <div class="house-iq-current">
-        ${overdueNow} overdue now •
-        ${Number(houseIQ.history?.onTimeRecords || 0)} of
-        ${Number(houseIQ.history?.totalRecords || 0)} recent completions on time
-      </div>
+      <div class="house-iq-header"><div><div class="house-iq-eyebrow">House IQ</div><div class="house-iq-label">${houseIQ.label || "Building rhythm"}</div></div><div class="house-iq-score">${Number(houseIQ.score || 0)}%</div></div>
+      <div class="house-iq-main-bar"><div style="width:${Math.min(100,Math.max(0,Number(houseIQ.score||0)))}%"></div></div>
+      <div class="house-iq-explainer">The new House IQ rewards showing up for your cleaning sessions and handling genuinely date based work on time. Unfinished cleaning tasks do not create overdue debt.</div>
     </div>
-
     ${renderHouseIQTrend(trends, snapshots)}
-
     <div class="house-iq-record-grid">
       ${renderIQRecord("Best IQ", `${Number(trends.summary?.bestScore || houseIQ.score || 0)}%`, formatTrendDate(trends.summary?.bestDate))}
       ${renderIQRecord("Current Streak", `${Number(trends.summary?.currentStreak || 0)} days`, "IQ 90 or higher")}
       ${renderIQRecord("Longest Streak", `${Number(trends.summary?.longestStreak || 0)} days`, "IQ 90 or higher")}
       ${renderIQRecord("History", `${Number(trends.summary?.snapshotDays || 0)} days`, "Daily snapshots")}
     </div>
-
     ${renderHouseIQWeeklySummary(trends.weekly || {})}
-
     <div class="section-title">Current Score Breakdown</div>
-
-    ${renderHouseIQComponent(
-      "Current Control",
-      current.score,
-      "40%",
-      `${Number(current.overdueTasks || 0)} overdue tasks • ${Number(current.overdueRoutines || 0)} overdue routines`
-    )}
-
-    ${renderHouseIQComponent(
-      "Individual Timeliness",
-      individual.score,
-      "30%",
-      individual.records
-        ? `${Number(individual.onTime || 0)} of ${Number(individual.records || 0)} completed on time`
-        : "Building data from future completions"
-    )}
-
-    ${renderHouseIQComponent(
-      "Routine Rhythm",
-      routine.score,
-      "30%",
-      routine.records
-        ? `${Number(routine.onTime || 0)} of ${Number(routine.records || 0)} completed on time`
-        : "Building data from future routine completions"
-    )}
-
+    ${renderHouseIQComponent("Daily Rhythm", daily.score, "35%", daily.records ? `${daily.completed || 0} of ${daily.records || 0} recent Daily sessions completed` : "Building data from new Daily sessions")}
+    ${renderHouseIQComponent("Focus Rhythm", focus.score, "35%", focus.records ? `${focus.completed || 0} of ${focus.records || 0} recent Focus, Waste, and Laundry sessions completed` : "Building data from new Focus sessions")}
+    ${renderHouseIQComponent("Maintenance Timeliness", maintenance.score, "30%", maintenance.records ? `${maintenance.onTime || 0} of ${maintenance.records || 0} date based completions on time` : "Building data from date based completions")}
     ${renderHouseIQInsights(trends.insights || [])}
   `;
 }
@@ -1788,22 +1781,12 @@ function renderHouseIQWeeklySummary(weekly) {
   const change = Number(weekly.change || 0);
   const changeText = change > 0 ? `+${change}` : String(change);
   const changeClass = change > 0 ? "up" : (change < 0 ? "down" : "steady");
-
   return `
     <div class="iq-week-card">
-      <div class="iq-week-header">
-        <div>
-          <div class="section-card-title">Last 7 Days</div>
-          <div class="iq-week-recorded">${Number(weekly.daysRecorded || 0)} days recorded</div>
-        </div>
-        <div class="iq-week-score">
-          <strong>${Number(weekly.averageIQ || 0)}%</strong>
-          <span class="${changeClass}">${changeText} vs. previous week</span>
-        </div>
-      </div>
+      <div class="iq-week-header"><div><div class="section-card-title">Last 7 Days</div><div class="iq-week-recorded">${Number(weekly.daysRecorded || 0)} days recorded</div></div><div class="iq-week-score"><strong>${Number(weekly.averageIQ || 0)}%</strong><span class="${changeClass}">${changeText} vs. previous week</span></div></div>
       <div class="iq-week-grid">
+        <div><strong>${Number(weekly.completedSessions || 0)}</strong><span>Sessions completed</span></div>
         <div><strong>${Number(weekly.completedTasks || 0)}</strong><span>Tasks completed</span></div>
-        <div><strong>${Number(weekly.completedRoutines || 0)}</strong><span>Routines completed</span></div>
         <div><strong>${Number(weekly.averageHomeHealth || 0)}%</strong><span>Average Home Health</span></div>
       </div>
     </div>
@@ -1859,95 +1842,31 @@ function renderExpandedZone(bestTask, otherTasks) {
 
 function renderDiagnostics() {
   const d = state.data.diagnostics;
-
-  if (!d) {
-    return `<div class="empty">No diagnostics data available.</div>`;
-  }
-
-  let html = `
-    <div class="diagnostic-card">
-      <div class="diagnostic-title">System Status</div>
+  if (!d) return `<div class="empty">No diagnostics data available.</div>`;
+  const homes=d.taskCounts?.bySchedulingHome || {};
+  let html=`
+    <div class="diagnostic-card"><div class="diagnostic-title">System Status</div>
       ${diagnosticRow("App Version", d.appVersion || "Unknown", "ok")}
-      ${diagnosticRow("API Connected", "Yes", "ok")}
       ${diagnosticRow("Last Sync", d.lastSync || "", "ok")}
-      ${diagnosticRow("Tasks Loaded", d.taskCounts?.totalTasks ?? 0, "ok")}
-      ${diagnosticRow("Individual Tasks", d.taskCounts?.individualTasks ?? 0, "ok")}
-      ${diagnosticRow("Routine Controlled Tasks", d.taskCounts?.routineControlledTasks ?? 0, "ok")}
-      ${diagnosticRow("Projects Loaded", d.projectCounts?.totalProjects ?? 0, "ok")}
-      ${diagnosticRow("History Records", d.historyCounts?.totalRecords ?? 0, "ok")}
+      ${diagnosticRow("Cleaning Model", d.cleaningModel?.ready ? "Ready" : "Needs Setup", d.cleaningModel?.ready ? "ok" : "warn")}
+      ${diagnosticRow("Unclassified Tasks", d.cleaningCounts?.unclassifiedTasks ?? 0, statusForCount(d.cleaningCounts?.unclassifiedTasks))}
     </div>
-
-    <div class="diagnostic-card">
-      <div class="diagnostic-title">Current Work</div>
+    <div class="diagnostic-card"><div class="diagnostic-title">Scheduling Homes</div>
+      ${Object.keys(homes).sort().map(home => diagnosticRow(home, homes[home], "ok")).join("")}
+    </div>
+    <div class="diagnostic-card"><div class="diagnostic-title">Cleaning History</div>
+      ${diagnosticRow("Cleaning Sessions", d.cleaningCounts?.sessions ?? 0, "ok")}
+      ${diagnosticRow("Completed Sessions", d.cleaningCounts?.completedSessions ?? 0, "ok")}
+      ${diagnosticRow("Opportunity Records", d.cleaningCounts?.opportunityRecords ?? 0, "ok")}
+      ${diagnosticRow("Active Friday Projects", d.cleaningCounts?.activeFridayProjects ?? 0, "ok")}
+    </div>
+    <div class="diagnostic-card"><div class="diagnostic-title">Date Based Work</div>
       ${diagnosticRow("Critical", d.taskCounts?.critical ?? 0, statusForCount(d.taskCounts?.critical))}
       ${diagnosticRow("Overdue", d.taskCounts?.overdue ?? 0, statusForCount(d.taskCounts?.overdue))}
       ${diagnosticRow("Due Today", d.taskCounts?.today ?? 0, "ok")}
-      ${diagnosticRow("This Week", d.taskCounts?.week ?? 0, "ok")}
-    </div>
-
-    <div class="diagnostic-card">
-      <div class="diagnostic-title">Routine Health</div>
-      ${diagnosticRow("Routines", d.routineCounts?.totalRoutines ?? 0, "ok")}
-      ${diagnosticRow("Active Routines", d.routineCounts?.activeRoutines ?? 0, "ok")}
-      ${diagnosticRow("Routine Step Rows", d.routineCounts?.stepRows ?? 0, "ok")}
-      ${diagnosticRow("Routine History Records", d.routineCounts?.historyRecords ?? 0, "ok")}
-      ${diagnosticRow("Missing Task IDs", d.routineCounts?.missingTaskIds ?? 0, statusForCount(d.routineCounts?.missingTaskIds))}
-      ${diagnosticRow("Individual Tasks Inside Routines", d.routineCounts?.individualTasksInRoutines ?? 0, statusForCount(d.routineCounts?.individualTasksInRoutines))}
-      ${diagnosticRow("Missing Routine IDs", d.routineCounts?.missingRoutineIds ?? 0, statusForCount(d.routineCounts?.missingRoutineIds))}
-    </div>
-
-    <div class="diagnostic-card">
-      <div class="diagnostic-title">Weekly Momentum</div>
-      ${diagnosticRow("Momentum", `${d.weeklyMomentum?.percent ?? 0}%`, "ok")}
-      ${diagnosticRow("Completed This Week", d.weeklyMomentum?.completedThisWeek ?? 0, "ok")}
-      ${diagnosticRow("Remaining Current", d.weeklyMomentum?.remainingCurrent ?? 0, "ok")}
-      ${diagnosticRow("Remaining Upcoming", d.weeklyMomentum?.remainingUpcoming ?? 0, "ok")}
-      ${diagnosticRow("Weekly Workload", d.weeklyMomentum?.totalWorkload ?? 0, "ok")}
-    </div>
-
-    <div class="diagnostic-card">
-      <div class="diagnostic-title">Task Data Health</div>
-      ${diagnosticRow("Blank Task IDs", d.taskIssues?.blankTaskIds ?? 0, statusForCount(d.taskIssues?.blankTaskIds))}
-      ${diagnosticRow("Duplicate Task IDs", d.taskIssues?.duplicateTaskIds ?? 0, statusForCount(d.taskIssues?.duplicateTaskIds))}
-      ${diagnosticRow("Blank Task Names", d.taskIssues?.blankTaskNames ?? 0, statusForCount(d.taskIssues?.blankTaskNames))}
-      ${diagnosticRow("Missing Due Dates", d.taskIssues?.missingDueDates ?? 0, statusForCount(d.taskIssues?.missingDueDates))}
-      ${diagnosticRow("Invalid Preferred Months", d.taskIssues?.invalidPreferredMonths ?? 0, statusForCount(d.taskIssues?.invalidPreferredMonths))}
-      ${diagnosticRow("Missing Estimated Minutes", d.taskIssues?.missingEstimatedMinutes ?? 0, statusForCount(d.taskIssues?.missingEstimatedMinutes))}
-      ${diagnosticRow("Negative or Blank Intervals", d.taskIssues?.badIntervals ?? 0, statusForCount(d.taskIssues?.badIntervals))}
-      ${diagnosticRow("Unknown Task Types", d.taskIssues?.unknownTaskTypes ?? 0, statusForCount(d.taskIssues?.unknownTaskTypes))}
-      ${diagnosticRow("Invalid Schedule Modes", d.taskIssues?.invalidScheduleModes ?? 0, statusForCount(d.taskIssues?.invalidScheduleModes))}
-      ${diagnosticRow("Blank Schedule Modes", d.taskCounts?.blankScheduleModes ?? 0, "ok")}
-    </div>
-
-    <div class="diagnostic-card">
-      <div class="diagnostic-title">History Health</div>
-      ${diagnosticRow("Completed Today", d.historyCounts?.completedToday ?? 0, "ok")}
-      ${diagnosticRow("Actual Time Entries", d.historyCounts?.actualTimeEntries ?? 0, "ok")}
-      ${diagnosticRow("Actual Time Entries Today", d.historyCounts?.actualTimeEntriesToday ?? 0, "ok")}
-      ${diagnosticRow("Average Actual Minutes", formatDiagnosticMinutes(d.historyCounts?.averageActualMinutes), "ok")}
-      ${diagnosticRow("History IDs Missing from Task Master", d.historyIssues?.orphanedTaskIds ?? 0, statusForCount(d.historyIssues?.orphanedTaskIds))}
-    </div>
-
-    <div class="diagnostic-card">
-      <div class="diagnostic-title">Projects</div>
-      ${diagnosticRow("Active", d.projectCounts?.active ?? 0, "ok")}
-      ${diagnosticRow("On Hold", d.projectCounts?.onHold ?? 0, "ok")}
-      ${diagnosticRow("Completed", d.projectCounts?.completed ?? 0, "ok")}
-      ${diagnosticRow("Missing Status", d.projectIssues?.missingStatus ?? 0, statusForCount(d.projectIssues?.missingStatus))}
+      ${diagnosticRow("Next 7 Days", d.taskCounts?.week ?? 0, "ok")}
     </div>
   `;
-
-  const warnings = collectDiagnosticWarnings(d);
-
-  if (warnings.length > 0) {
-    html += `
-      <div class="diagnostic-card">
-        <div class="diagnostic-title">Warnings</div>
-        ${warnings.map(warning => `<div class="diagnostic-warning">${warning}</div>`).join("")}
-      </div>
-    `;
-  }
-
   return html;
 }
 
@@ -2348,15 +2267,15 @@ function formatGain(gainPercent) {
 }
 
 function completedCard(task) {
+  const canUndo = String(task.completionSource || "") !== "Cleaning";
   return `
     <div class="completed-card">
-      <strong>${task.task}</strong>
-      <div class="task-meta">${task.zone || ""}${task.area ? " • " + task.area : ""}</div>
-      <button class="undo-btn" onclick="undoCompletion(${task.historyRow})">Undo Completion</button>
+      <div class="task-title">✓ ${task.task}</div>
+      <div class="task-meta">${task.zone || ""}${task.area ? ` • ${task.area}` : ""}${task.actualMinutes ? ` • ${task.actualMinutes} min` : ""}</div>
+      ${canUndo ? `<button class="undo-btn" onclick="undoCompletion(${task.historyRow})">Undo</button>` : ""}
     </div>
   `;
 }
-
 
 function completedRoutineCard(routine) {
   return `
