@@ -23,10 +23,12 @@ let state = {
   houseIQRange: 30,
   upcomingExpanded: false,
   completedExpanded: false,
-  selectedForecastDate: null
+  selectedForecastDate: null,
+  cleaningSelections: {}
 };
 
 const AUTH_KEY = "houseflow_authenticated_v1";
+const CLEANING_SELECTIONS_KEY = "houseflow_cleaning_selections_v1";
 
 document.querySelectorAll(".nav-btn").forEach(button => {
   button.addEventListener("click", () => {
@@ -48,6 +50,7 @@ document.querySelectorAll(".nav-btn").forEach(button => {
 });
 
 function initApp() {
+  loadCleaningSelections();
   state.isAuthenticated = localStorage.getItem(AUTH_KEY) === "true";
   if (!state.isAuthenticated) {
     renderLogin();
@@ -602,6 +605,68 @@ function renderCleaningModelWarning(modelReady) {
   return `<div class="model-warning"><strong>Cleaning model setup is incomplete.</strong><br>${Number(modelReady.unclassifiedTasks || 0)} Task Master rows still need a Scheduling Home.</div>`;
 }
 
+function loadCleaningSelections() {
+  try {
+    state.cleaningSelections = JSON.parse(
+      localStorage.getItem(CLEANING_SELECTIONS_KEY) || "{}"
+    ) || {};
+  } catch (error) {
+    state.cleaningSelections = {};
+  }
+}
+
+function saveCleaningSelections() {
+  try {
+    localStorage.setItem(
+      CLEANING_SELECTIONS_KEY,
+      JSON.stringify(state.cleaningSelections || {})
+    );
+  } catch (error) {
+    // The checklist still works for the current page even if storage is unavailable.
+  }
+}
+
+function getCleaningSelection(sessionId) {
+  if (!state.cleaningSelections[sessionId]) {
+    state.cleaningSelections[sessionId] = {};
+  }
+
+  return state.cleaningSelections[sessionId];
+}
+
+function isCleaningTaskSelected(sessionId, taskId) {
+  return !!getCleaningSelection(sessionId)[taskId];
+}
+
+function toggleCleaningTaskSelection(sessionId, taskId) {
+  const selection = getCleaningSelection(sessionId);
+
+  if (selection[taskId]) {
+    delete selection[taskId];
+  } else {
+    selection[taskId] = true;
+  }
+
+  saveCleaningSelections();
+  render();
+}
+
+function clearCleaningSelection(sessionId) {
+  if (state.cleaningSelections[sessionId]) {
+    delete state.cleaningSelections[sessionId];
+    saveCleaningSelections();
+  }
+}
+
+function clearCleaningTaskSelection(sessionId, taskId) {
+  const selection = getCleaningSelection(sessionId);
+
+  if (selection[taskId]) {
+    delete selection[taskId];
+    saveCleaningSelections();
+  }
+}
+
 function renderCleaningSessionCard(session) {
   const statusClass = String(session.status || "not-started").toLowerCase().replace(/\s+/g,"-");
   const isTimed = Number(session.goalMinutes || 0) > 0;
@@ -640,12 +705,7 @@ function renderCleaningSessionCard(session) {
   }
 
   if (["Not Started", "In Progress"].includes(session.status)) {
-    const requiresAllResolved = ["Waste", "Laundry"].includes(session.sessionType);
-    if (!requiresAllResolved) {
-      html += `<button class="complete-btn session-main-btn" onclick="finishCleaningSession('${escapeQuotes(session.sessionId)}')">Finish Session</button>`;
-    } else if (unresolved > 0) {
-      html += `<div class="cleaning-session-note">Check off the applicable items above. HouseFlow will close this session when everything is resolved.</div>`;
-    }
+    html += `<button class="complete-btn session-main-btn" onclick="finishCleaningSession('${escapeQuotes(session.sessionId)}')">Finish Session</button>`;
   } else if (session.status === "Completed") {
     html += `<div class="session-success">✓ Session complete${unresolved ? ` • ${unresolved} items can wait for their next opportunity` : ""}</div>`;
   }
@@ -655,46 +715,110 @@ function renderCleaningSessionCard(session) {
 }
 
 function renderCleaningTaskRow(session, task) {
-  const done = task.completed || task.worked || task.outcome === "Not Needed";
+  const serverDone =
+    task.completed ||
+    task.worked ||
+    task.outcome === "Not Needed";
+
+  const locallyChecked =
+    !serverDone &&
+    isCleaningTaskSelected(session.sessionId, task.taskId);
+
+  const checked = serverDone || locallyChecked;
   const color = task.colorStatus || "normal";
   const labels = [];
+
   if (task.skipCount >= 2) labels.push(`missed ${task.skipCount} times`);
   else if (task.skipCount === 1) labels.push("missed last opportunity");
-  if (task.waitingRotations > 0) labels.push(`waiting ${task.waitingRotations} ${task.waitingRotations === 1 ? "rotation" : "rotations"}`);
-  if (task.progressMinutes > 0) labels.push(`${task.progressMinutes} min invested`);
-  if (task.activeFridayProject) labels.push("active Friday project");
+
+  if (task.waitingRotations > 0) {
+    labels.push(
+      `waiting ${task.waitingRotations} ${
+        task.waitingRotations === 1 ? "rotation" : "rotations"
+      }`
+    );
+  }
+
+  if (task.progressMinutes > 0) {
+    labels.push(`${task.progressMinutes} min invested`);
+  }
+
+  if (task.activeFridayProject) {
+    labels.push("active Friday project");
+  }
 
   let actions = "";
-  if (["Not Started", "In Progress"].includes(session.status) && !done) {
-    actions += `<button class="cleaning-check-btn" onclick="completeCleaningSessionTask('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')">✓ Done</button>`;
+
+  if (["Not Started", "In Progress"].includes(session.status) && !serverDone) {
     if (session.sessionType === "Friday Focus" && task.isLong) {
-      actions += `<button class="secondary-btn cleaning-progress-btn" onclick="workFriday15('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')">Worked 15 Minutes</button>`;
+      actions += `
+        <button
+          class="secondary-btn cleaning-progress-btn"
+          onclick="workFriday15(
+            '${escapeQuotes(session.sessionId)}',
+            '${escapeQuotes(task.taskId)}'
+          )"
+        >Worked 15 Minutes</button>
+      `;
     }
+
     if (session.sessionType === "Waste" && task.taskId === "WS005") {
-      actions += `<button class="secondary-btn cleaning-progress-btn" onclick="cleaningTaskNotNeeded('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')">Nothing This Month</button>`;
+      actions += `
+        <button
+          class="secondary-btn cleaning-progress-btn"
+          onclick="cleaningTaskNotNeeded(
+            '${escapeQuotes(session.sessionId)}',
+            '${escapeQuotes(task.taskId)}'
+          )"
+        >Nothing This Month</button>
+      `;
     }
   }
 
   const duplicateTitleCount = (session.tasks || []).filter(
-    other => String(other.task || "").trim().toLowerCase() === String(task.task || "").trim().toLowerCase()
+    other =>
+      String(other.task || "").trim().toLowerCase() ===
+      String(task.task || "").trim().toLowerCase()
   ).length;
+
   const locationLabel = task.area || task.zone || "";
   const alwaysShowLocation = session.sessionType === "Daily";
+
   const displayTaskName =
     locationLabel && (alwaysShowLocation || duplicateTitleCount > 1)
       ? `${locationLabel} • ${task.task}`
       : task.task;
 
+  const canToggle =
+    ["Not Started", "In Progress"].includes(session.status) &&
+    !serverDone;
+
   return `
-    <div class="cleaning-task-row ${color} ${done ? "done" : ""}">
-      <div class="cleaning-task-checkmark">${done ? "✓" : "☐"}</div>
+    <div class="cleaning-task-row ${color} ${serverDone ? "done" : ""} ${locallyChecked ? "selected" : ""}">
+      <button
+        class="cleaning-task-checkbox ${checked ? "checked" : ""}"
+        type="button"
+        aria-label="${checked ? "Uncheck" : "Check"} ${displayTaskName}"
+        ${canToggle
+          ? `onclick="toggleCleaningTaskSelection('${escapeQuotes(session.sessionId)}','${escapeQuotes(task.taskId)}')"`
+          : "disabled"}
+      >${checked ? "✓" : ""}</button>
+
       <div class="cleaning-task-body">
         <div class="cleaning-task-title">${displayTaskName}</div>
-        <div class="cleaning-task-meta">${Number(task.minutes || 0)} min${labels.length ? ` • ${labels.join(" • ")}` : ""}</div>
-        ${task.worked ? `<div class="cleaning-worked-note">Worked 15 minutes today</div>` : ""}
-        ${task.outcome === "Not Needed" ? `<div class="cleaning-worked-note">Nothing needed this month</div>` : ""}
+        <div class="cleaning-task-meta">
+          ${Number(task.minutes || 0)} min
+          ${labels.length ? ` • ${labels.join(" • ")}` : ""}
+        </div>
+        ${task.worked
+          ? `<div class="cleaning-worked-note">Worked 15 minutes today</div>`
+          : ""}
+        ${task.outcome === "Not Needed"
+          ? `<div class="cleaning-worked-note">Nothing needed this month</div>`
+          : ""}
       </div>
-      <div class="cleaning-task-actions">${actions}</div>
+
+      ${actions ? `<div class="cleaning-task-actions">${actions}</div>` : ""}
     </div>
   `;
 }
@@ -713,13 +837,27 @@ function completeCleaningSessionTask(sessionId, taskId) {
 }
 
 function finishCleaningSession(sessionId) {
+  const checkedTaskIds = Object.keys(getCleaningSelection(sessionId))
+    .filter(taskId => getCleaningSelection(sessionId)[taskId]);
+
   renderLoading();
-  callApi("finishCleaningSession", { sessionId })
-    .then(data => { state.data = addGainPercentages(data); state.loading = false; state.completedExpanded = true; render(); })
+
+  callApi("finishCleaningSession", {
+    sessionId,
+    checkedTaskIds: checkedTaskIds.join(",")
+  })
+    .then(data => {
+      clearCleaningSelection(sessionId);
+      state.data = addGainPercentages(data);
+      state.loading = false;
+      state.completedExpanded = true;
+      render();
+    })
     .catch(error => renderError(error));
 }
 
 function workFriday15(sessionId, taskId) {
+  clearCleaningTaskSelection(sessionId, taskId);
   renderLoading();
   callApi("workFriday15", { sessionId, taskId })
     .then(data => { state.data = addGainPercentages(data); state.loading = false; state.completedExpanded = true; render(); })
@@ -727,6 +865,7 @@ function workFriday15(sessionId, taskId) {
 }
 
 function cleaningTaskNotNeeded(sessionId, taskId) {
+  clearCleaningTaskSelection(sessionId, taskId);
   callApi("cleaningTaskNotNeeded", { sessionId, taskId })
     .then(data => { state.data = addGainPercentages(data); render(); })
     .catch(error => renderError(error));

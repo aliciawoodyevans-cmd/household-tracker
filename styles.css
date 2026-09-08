@@ -1657,3 +1657,49 @@ h1 {
 .cleaning-task-title {
   line-height: 1.25;
 }
+
+
+/* v2.0.3 batch checklist selection */
+.cleaning-task-checkbox {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #777;
+  border-radius: 6px;
+  background: white;
+  color: white;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cleaning-task-checkbox.checked {
+  background: #111;
+  border-color: #111;
+}
+
+.cleaning-task-checkbox:disabled {
+  opacity: 0.7;
+}
+
+.cleaning-task-row.selected {
+  outline: 1px solid #c8c8c8;
+  outline-offset: -1px;
+}
+
+.cleaning-task-actions {
+  min-width: 0;
+}
+
+@media (max-width: 439px) {
+  .cleaning-task-row {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+
+  .cleaning-task-actions {
+    grid-column: 2;
+  }
+}
