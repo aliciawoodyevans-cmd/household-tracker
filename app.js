@@ -671,7 +671,6 @@ function renderCleaningSessionCard(session) {
   const statusClass = String(session.status || "not-started").toLowerCase().replace(/\s+/g,"-");
   const isTimed = Number(session.goalMinutes || 0) > 0;
   const titleMeta = [];
-  if (session.cycle) titleMeta.push(`Cycle ${session.cycle}`);
   if (session.fridayWeek) titleMeta.push(`Week ${session.fridayWeek}`);
   if (isTimed) titleMeta.push(`${session.goalMinutes} minute goal`);
   const unresolved = (session.tasks || []).filter(task => !task.completed && !task.worked && task.outcome !== "Not Needed").length;
@@ -694,14 +693,17 @@ function renderCleaningSessionCard(session) {
 
   if (!(session.tasks || []).length) {
     html += `<div class="accordion-empty">Nothing is eligible for this session.</div>`;
+  } else if (
+    session.sessionType === "Weekly Focus" &&
+    session.focusGroup === "Bathrooms"
+  ) {
+    html += renderBathroomTaskSections(session);
   } else {
     html += `<div class="cleaning-task-list">`;
-    (session.tasks || []).forEach(task => html += renderCleaningTaskRow(session, task));
+    (session.tasks || []).forEach(task => {
+      html += renderCleaningTaskRow(session, task);
+    });
     html += `</div>`;
-  }
-
-  if (session.sessionType === "Friday Focus" && Number(session.eligibleNotOffered || 0) > 0) {
-    html += `<div class="cleaning-queue-note">${session.eligibleNotOffered} other eligible ${session.eligibleNotOffered === 1 ? "task stays" : "tasks stay"} in the queue without being counted as skipped.</div>`;
   }
 
   if (["Not Started", "In Progress"].includes(session.status)) {
@@ -712,6 +714,61 @@ function renderCleaningSessionCard(session) {
 
   html += `</div>`;
   return html;
+}
+
+function renderBathroomTaskSections(session) {
+  const tasks = session.tasks || [];
+  const preferredOrder = ["Full Bath", "Half Bath"];
+  const areas = [];
+
+  preferredOrder.forEach(area => {
+    if (tasks.some(task => task.area === area)) {
+      areas.push(area);
+    }
+  });
+
+  tasks.forEach(task => {
+    const area = task.area || "Other";
+    if (!areas.includes(area)) areas.push(area);
+  });
+
+  let html = `<div class="bathroom-focus-sections">`;
+
+  areas.forEach(area => {
+    const areaTasks = tasks.filter(
+      task => (task.area || "Other") === area
+    );
+
+    if (!areaTasks.length) return;
+
+    const attentionCount = areaTasks.filter(
+      task => task.needsAttention
+    ).length;
+
+    html += `
+      <div class="bathroom-focus-section">
+        <div class="bathroom-focus-heading">
+          <strong>${area}</strong>
+          <span>
+            ${attentionCount
+              ? `${attentionCount} ${attentionCount === 1 ? "task needs" : "tasks need"} attention`
+              : "No tasks currently due"}
+          </span>
+        </div>
+        <div class="cleaning-task-list">
+    `;
+
+    areaTasks.forEach(task => {
+      html += renderCleaningTaskRow(session, task);
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+  });
+
+  return html + `</div>`;
 }
 
 function renderCleaningTaskRow(session, task) {
@@ -731,12 +788,12 @@ function renderCleaningTaskRow(session, task) {
   if (task.skipCount >= 2) labels.push(`missed ${task.skipCount} times`);
   else if (task.skipCount === 1) labels.push("missed last opportunity");
 
-  if (task.waitingRotations > 0) {
-    labels.push(
-      `waiting ${task.waitingRotations} ${
-        task.waitingRotations === 1 ? "rotation" : "rotations"
-      }`
-    );
+  if (task.isCarryover) {
+    labels.push("carryover");
+  }
+
+  if (task.needsAttention && Number(task.skipCount || 0) === 0) {
+    labels.push("due for attention");
   }
 
   if (task.progressMinutes > 0) {
@@ -782,7 +839,10 @@ function renderCleaningTaskRow(session, task) {
   ).length;
 
   const locationLabel = task.area || task.zone || "";
-  const alwaysShowLocation = session.sessionType === "Daily";
+  const alwaysShowLocation =
+    ["Daily", "Weekly Focus", "Friday Focus"].includes(
+      session.sessionType
+    );
 
   const displayTaskName =
     locationLabel && (alwaysShowLocation || duplicateTitleCount > 1)

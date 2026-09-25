@@ -1703,3 +1703,39 @@ h1 {
     grid-column: 2;
   }
 }
+
+
+/* v2.1.0 priority pools */
+.bathroom-focus-section {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.bathroom-focus-section:first-child {
+  margin-top: 0;
+}
+
+.bathroom-focus-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 11px 12px;
+  background: #f4f4f4;
+}
+
+.bathroom-focus-heading strong {
+  font-size: 15px;
+}
+
+.bathroom-focus-heading span {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.bathroom-focus-section .cleaning-task-list {
+  padding: 0 12px;
+}
