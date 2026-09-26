@@ -694,10 +694,16 @@ function renderCleaningSessionCard(session) {
   if (!(session.tasks || []).length) {
     html += `<div class="accordion-empty">Nothing is eligible for this session.</div>`;
   } else if (
-    session.sessionType === "Weekly Focus" &&
-    session.focusGroup === "Bathrooms"
+    (
+      session.sessionType === "Weekly Focus" &&
+      session.focusGroup === "Bathrooms"
+    ) ||
+    (
+      session.sessionType === "Friday Focus" &&
+      session.focusGroup === "Bedrooms"
+    )
   ) {
-    html += renderBathroomTaskSections(session);
+    html += renderAreaTaskSections(session);
   } else {
     html += `<div class="cleaning-task-list">`;
     (session.tasks || []).forEach(task => {
@@ -716,44 +722,37 @@ function renderCleaningSessionCard(session) {
   return html;
 }
 
-function renderBathroomTaskSections(session) {
+function renderAreaTaskSections(session) {
   const tasks = session.tasks || [];
-  const preferredOrder = ["Full Bath", "Half Bath"];
+  let preferredOrder = [];
+
+  if (session.focusGroup === "Bathrooms") {
+    preferredOrder = ["Full Bath", "Half Bath"];
+  } else if (session.focusGroup === "Bedrooms") {
+    preferredOrder = ["Adult Bedroom", "Kid Bedroom"];
+  }
+
   const areas = [];
-
   preferredOrder.forEach(area => {
-    if (tasks.some(task => task.area === area)) {
-      areas.push(area);
-    }
+    if (tasks.some(task => task.area === area)) areas.push(area);
   });
-
   tasks.forEach(task => {
     const area = task.area || "Other";
     if (!areas.includes(area)) areas.push(area);
   });
 
-  let html = `<div class="bathroom-focus-sections">`;
+  let html = `<div class="area-focus-sections">`;
 
   areas.forEach(area => {
-    const areaTasks = tasks.filter(
-      task => (task.area || "Other") === area
-    );
-
+    const areaTasks = tasks.filter(task => (task.area || "Other") === area);
     if (!areaTasks.length) return;
-
-    const attentionCount = areaTasks.filter(
-      task => task.needsAttention
-    ).length;
+    const attentionCount = areaTasks.filter(task => task.needsAttention).length;
 
     html += `
-      <div class="bathroom-focus-section">
-        <div class="bathroom-focus-heading">
+      <div class="area-focus-section">
+        <div class="area-focus-heading">
           <strong>${area}</strong>
-          <span>
-            ${attentionCount
-              ? `${attentionCount} ${attentionCount === 1 ? "task needs" : "tasks need"} attention`
-              : "No tasks currently due"}
-          </span>
+          <span>${attentionCount ? `${attentionCount} ${attentionCount === 1 ? "task needs" : "tasks need"} attention` : "No tasks currently due"}</span>
         </div>
         <div class="cleaning-task-list">
     `;
