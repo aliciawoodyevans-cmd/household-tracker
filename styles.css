@@ -1739,3 +1739,15 @@ h1 {
 .area-focus-section .cleaning-task-list {
   padding: 0 12px;
 }
+
+
+/* v2.1.2 open completed sessions */
+.session-open-btn {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.session-partial {
+  background: #fff3cd;
+  color: #7a5b00;
+}

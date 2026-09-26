@@ -714,8 +714,29 @@ function renderCleaningSessionCard(session) {
 
   if (["Not Started", "In Progress"].includes(session.status)) {
     html += `<button class="complete-btn session-main-btn" onclick="finishCleaningSession('${escapeQuotes(session.sessionId)}')">Finish Session</button>`;
+  } else if (session.status === "Partial") {
+    html += `
+      <div class="session-success session-partial">
+        Session saved with unfinished items
+      </div>
+      <button
+        class="secondary-btn session-open-btn"
+        onclick="openCleaningSession('${escapeQuotes(session.sessionId)}')"
+      >Open Session</button>
+    `;
   } else if (session.status === "Completed") {
-    html += `<div class="session-success">✓ Session complete${unresolved ? ` • ${unresolved} items can wait for their next opportunity` : ""}</div>`;
+    html += `
+      <div class="session-success">
+        ✓ Session complete
+        ${unresolved
+          ? ` • ${unresolved} items can wait for their next opportunity`
+          : ""}
+      </div>
+      <button
+        class="secondary-btn session-open-btn"
+        onclick="openCleaningSession('${escapeQuotes(session.sessionId)}')"
+      >Open Session</button>
+    `;
   }
 
   html += `</div>`;
@@ -892,6 +913,20 @@ function startCleaningSession(sessionId) {
 function completeCleaningSessionTask(sessionId, taskId) {
   callApi("completeCleaningTask", { sessionId, taskId })
     .then(data => { state.data = addGainPercentages(data); render(); })
+    .catch(error => renderError(error));
+}
+
+function openCleaningSession(sessionId) {
+  renderLoading();
+
+  callApi("openCleaningSession", { sessionId })
+    .then(data => {
+      clearCleaningSelection(sessionId);
+      state.data = addGainPercentages(data);
+      state.loading = false;
+      state.completedExpanded = false;
+      render();
+    })
     .catch(error => renderError(error));
 }
 
