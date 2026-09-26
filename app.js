@@ -2547,6 +2547,39 @@ function undoRoutineCompletion(routineHistoryRow) {
 }
 
 
+function getTodayDateInputValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getCompletionDateInputValue() {
+  const input = document.getElementById("completion-date-input");
+  return input ? String(input.value || "").trim() : getTodayDateInputValue();
+}
+
+function validateCompletionDateInput() {
+  const value = getCompletionDateInputValue();
+  const today = getTodayDateInputValue();
+
+  if (!value) {
+    state.completionError = "Choose a completion date.";
+    render();
+    return null;
+  }
+
+  if (value > today) {
+    state.completionError = "Completion date cannot be in the future.";
+    render();
+    return null;
+  }
+
+  return value;
+}
+
 function renderCompletionModal() {
   const task = state.pendingCompletionTask;
   if (!task) return "";
@@ -2556,7 +2589,21 @@ function renderCompletionModal() {
       <div class="completion-modal" onclick="event.stopPropagation()">
         <div class="modal-eyebrow">Complete Task</div>
         <div class="modal-title">${task.task || "Task"}</div>
-        <div class="modal-question">How many minutes did this take?</div>
+
+        <label class="completion-field-label" for="completion-date-input">
+          Completion date
+        </label>
+        <input
+          id="completion-date-input"
+          class="completion-date-input"
+          type="date"
+          value="${getTodayDateInputValue()}"
+          max="${getTodayDateInputValue()}"
+        />
+
+        <label class="completion-field-label" for="actual-minutes-input">
+          How many minutes did this take?
+        </label>
         <input
           id="actual-minutes-input"
           class="minutes-input"
@@ -2618,17 +2665,32 @@ function closeCompletionPrompt() {
 
 function skipCompletionMinutes() {
   if (!state.pendingCompletionTask) return;
-  completeTask(state.pendingCompletionTask.taskId, "");
+
+  const completionDate = validateCompletionDateInput();
+  if (!completionDate) return;
+
+  completeTask(
+    state.pendingCompletionTask.taskId,
+    "",
+    completionDate
+  );
 }
 
 function saveCompletionMinutes() {
   if (!state.pendingCompletionTask) return;
 
+  const completionDate = validateCompletionDateInput();
+  if (!completionDate) return;
+
   const input = document.getElementById("actual-minutes-input");
   const value = input ? String(input.value || "").trim() : "";
 
   if (value === "") {
-    completeTask(state.pendingCompletionTask.taskId, "");
+    completeTask(
+      state.pendingCompletionTask.taskId,
+      "",
+      completionDate
+    );
     return;
   }
 
@@ -2640,16 +2702,28 @@ function saveCompletionMinutes() {
     return;
   }
 
-  completeTask(state.pendingCompletionTask.taskId, minutes);
+  completeTask(
+    state.pendingCompletionTask.taskId,
+    minutes,
+    completionDate
+  );
 }
 
-function completeTask(taskId, actualMinutes = "") {
+function completeTask(
+  taskId,
+  actualMinutes = "",
+  completionDate = getTodayDateInputValue()
+) {
   const task = state.pendingCompletionTask || [...(state.data.today || []), ...(state.data.week || [])].find(t => String(t.taskId) === String(taskId));
   state.pendingCompletionTask = null;
   state.completionError = "";
   renderLoading();
 
-  callApi("complete", { taskId, actualMinutes })
+  callApi("complete", {
+    taskId,
+    actualMinutes,
+    completionDate
+  })
     .then(data => {
       state.data = addGainPercentages(data);
       state.completedExpanded = true;
